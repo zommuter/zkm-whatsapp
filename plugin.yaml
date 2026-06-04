@@ -20,5 +20,4 @@ config:
     description: Store owner's WhatsApp JID (e.g. 41791234567@s.whatsapp.net). Used to identify outgoing messages.
   timezone:
     required: false
-    default: "Europe/Zurich"
-    description: IANA timezone name for day-boundary and HH:MM formatting (store locale).
+    description: IANA timezone name for day-boundary and HH:MM formatting. Defaults to system timezone.

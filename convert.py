@@ -28,7 +28,7 @@ import hashlib
 import sqlite3
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, tzinfo as TzInfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -233,7 +233,7 @@ def convert(
 ) -> list[Path]:
     source_db = Path(config["source_db"]).expanduser().resolve()
     owner_jid: str = config.get("owner_jid", "owner@s.whatsapp.net")
-    tz = ZoneInfo(config.get("timezone", "Europe/Zurich"))
+    tz: TzInfo = ZoneInfo(config["timezone"]) if "timezone" in config else (datetime.now().astimezone().tzinfo or ZoneInfo("UTC"))
 
     db_state = load_state(store_path, source_db)
     watermark_ms: int = db_state.get("watermark_ms", 0)
@@ -342,7 +342,7 @@ def convert(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────────
 
-def _reconstitute(entry: dict, tz: ZoneInfo) -> dict:
+def _reconstitute(entry: dict, tz: TzInfo) -> dict:
     """Re-create a message dict from a manifest entry (for merging with existing files)."""
     ts = datetime.fromisoformat(entry["timestamp"]).astimezone(tz)
     return {
