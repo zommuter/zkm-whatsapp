@@ -1,5 +1,5 @@
 name: whatsapp
-version: 0.1.0
+version: 0.2.0
 description: Convert decrypted WhatsApp msgstore.db to per-chat-day transcript markdown
 license: MIT
 
@@ -9,6 +9,7 @@ conformance:
 
 creates_dirs:
   - chat/whatsapp
+  - inbox/whatsapp
 
 config:
   source_db:

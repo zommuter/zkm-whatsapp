@@ -7,11 +7,17 @@ from pathlib import Path
 
 import pytest
 
+# Stable path for the fake media file used in media tests (session-scoped alongside the db).
+MEDIA_FILENAME = "photo.jpg"
+MEDIA_MIME = "image/jpeg"
+MEDIA_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 12  # minimal JPEG magic + padding
+MEDIA_KEY_ID = "AABBCC_MEDIA1"  # key_id for the media message row
 
-def _create_test_db(path: Path) -> None:
+
+def _create_test_db(path: Path, media_file: Path) -> None:
     """Create a minimal msgstore.db fixture with known test data."""
     con = sqlite3.connect(path)
-    con.executescript("""
+    con.executescript(f"""
         CREATE TABLE jid (
             _id INTEGER PRIMARY KEY,
             user TEXT NOT NULL,
@@ -62,9 +68,14 @@ def _create_test_db(path: Path) -> None:
         INSERT INTO message VALUES (2, 'AABBCC002', 1744550260000, 1, 'Hi!', 1, NULL, 0);
         INSERT INTO message VALUES (3, 'AABBCC003', 1744550320000, 0, NULL, 1, 2, 1);  -- revoked
         INSERT INTO message VALUES (4, 'AABBCC004', 1744550380000, 0, 'With reply', 1, 2, 0);
+        -- media message (same chat, same day, slightly later)
+        INSERT INTO message VALUES (7, '{MEDIA_KEY_ID}', 1744550440000, 0, NULL, 1, 2, 0);
 
         -- reply link
         INSERT INTO message_quoted VALUES (4, 'AABBCC001');
+
+        -- media row for message 7
+        INSERT INTO message_media VALUES (7, '{MEDIA_MIME}', '{media_file}');
 
         -- Group messages (same day)
         INSERT INTO message VALUES (5, 'BBCCDD001', 1744550400000, 0, 'Group message', 2, 3, 0);
@@ -75,9 +86,17 @@ def _create_test_db(path: Path) -> None:
 
 
 @pytest.fixture(scope="session")
-def test_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    db_path = tmp_path_factory.mktemp("fixtures") / "msgstore.db"
-    _create_test_db(db_path)
+def media_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A real on-disk fake JPEG used by message_media rows."""
+    p = tmp_path_factory.mktemp("fixtures") / MEDIA_FILENAME
+    p.write_bytes(MEDIA_BYTES)
+    return p
+
+
+@pytest.fixture(scope="session")
+def test_db(tmp_path_factory: pytest.TempPathFactory, media_file: Path) -> Path:
+    db_path = tmp_path_factory.mktemp("fixtures2") / "msgstore.db"
+    _create_test_db(db_path, media_file)
     return db_path
 
 

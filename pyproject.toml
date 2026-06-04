@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zkm-whatsapp"
-version = "0.1.0"
+version = "0.2.0"
 description = "zkm plugin: convert decrypted WhatsApp msgstore.db to per-chat-day transcript markdown"
 license = "MIT"
 requires-python = ">=3.11"

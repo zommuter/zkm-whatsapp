@@ -32,14 +32,17 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import mimetypes
+
 import yaml
 from zkm.atomic import write_atomic
 from zkm.cas import write_object
+from zkm.inbox import build_canonical_index, symlink_with_sidecar
 
 from state import load_state, save_state
 
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -284,6 +287,7 @@ def convert(
         if ts_ms > max_ts_ms:
             max_ts_ms = ts_ms
 
+    inbox_index: dict[str, Path] = build_canonical_index(store_path, "inbox/whatsapp")
     written: list[Path] = []
     total = len(by_chat_day)
 
@@ -311,10 +315,10 @@ def convert(
             con, chat_jid, sample["chat_jid_row_id"], jid_map, owner_jid, all_msgs
         )
 
-        # Handle media → CAS (W6)
+        # Handle media → CAS + inbox symlink (W6)
         for m in all_msgs:
             if m.get("media_path"):
-                _handle_media(m, store_path, tid)
+                _handle_media(m, store_path, tid, out_path, chat_jid, inbox_index)
 
         chat_name = sample.get("chat_name")
         rendered = _render_file(
@@ -385,8 +389,23 @@ def _build_participants(
     return result
 
 
-def _handle_media(m: dict, store_path: Path, tid: str) -> None:
-    """Store media file in CAS and annotate m with cas_rel path (W6)."""
+def _ext_for_mime(mime: str | None) -> str:
+    """Return a file extension (with leading dot) for *mime*, or empty string."""
+    if not mime:
+        return ""
+    ext = mimetypes.guess_extension(mime, strict=False)
+    return ext or ""
+
+
+def _handle_media(
+    m: dict,
+    store_path: Path,
+    tid: str,
+    out_path: Path,
+    chat_jid: str,
+    inbox_index: dict[str, Path],
+) -> None:
+    """Store media file in CAS, create inbox symlink + .origin.json sidecar (W6)."""
     media_path = Path(m["media_path"])
     if not media_path.exists():
         return
@@ -394,5 +413,19 @@ def _handle_media(m: dict, store_path: Path, tid: str) -> None:
     try:
         cas_path = write_object(store_path, subdir, media_path)
         m["cas_rel"] = str(cas_path.relative_to(store_path))
+
+        message_id = f"whatsapp:{chat_jid}:{m['key_id']}"
+        link_name = media_path.name or f"{m['key_id']}{_ext_for_mime(m.get('mime_type'))}"
+        symlink_with_sidecar(
+            cas_object=cas_path,
+            link_dir=store_path / "inbox" / "whatsapp" / tid,
+            link_name=link_name,
+            producer={
+                "plugin": PLUGIN_NAME,
+                "message": str(out_path.relative_to(store_path)),
+                "sha256": hashlib.sha256(message_id.encode()).hexdigest(),
+            },
+            canonical_index=inbox_index,
+        )
     except Exception:
         pass
