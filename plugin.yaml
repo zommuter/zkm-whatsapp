@@ -1,0 +1,23 @@
+name: whatsapp
+version: 0.1.0
+description: Convert decrypted WhatsApp msgstore.db to per-chat-day transcript markdown
+license: MIT
+
+conformance:
+  config:
+    source_db: tests/fixtures/msgstore.db
+
+creates_dirs:
+  - chat/whatsapp
+
+config:
+  source_db:
+    required: true
+    description: Path to decrypted msgstore.db (SQLite). Decryption is a separate fetch-role step.
+  owner_jid:
+    required: true
+    description: Store owner's WhatsApp JID (e.g. 41791234567@s.whatsapp.net). Used to identify outgoing messages.
+  timezone:
+    required: false
+    default: "Europe/Zurich"
+    description: IANA timezone name for day-boundary and HH:MM formatting (store locale).
