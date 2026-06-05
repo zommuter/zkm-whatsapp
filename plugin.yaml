@@ -11,6 +11,10 @@ creates_dirs:
   - chat/whatsapp
   - inbox/whatsapp
 
+gitignore_patterns:
+  - inbox/whatsapp/msgstore.db
+  - inbox/whatsapp/msgstore.db.crypt15
+
 config:
   source_db:
     required: true
