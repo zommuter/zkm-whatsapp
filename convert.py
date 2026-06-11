@@ -25,7 +25,9 @@ if _here not in _sys.path:
     _sys.path.insert(0, _here)
 
 import hashlib
+import shutil
 import sqlite3
+import tempfile
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import datetime, tzinfo as TzInfo
@@ -42,7 +44,7 @@ from zkm.inbox import build_canonical_index, symlink_with_sidecar
 from state import load_state, save_state
 
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -223,6 +225,35 @@ def _render_file(
     return f"---\n{yaml_str}---\n\n{body_str}\n"
 
 
+# ── WAL-safe source resolution ────────────────────────────────────────────────────
+
+def _wal_safe_source(source_db: Path) -> tuple[Path, Path | None]:
+    """Return a db path safe to open without mutating the source.
+
+    If a non-empty sibling <db>-wal exists, copy the db + -wal + -shm trio to a
+    tempdir and checkpoint the copy (TRUNCATE) so reads include all committed frames.
+    The caller owns the tempdir and must shutil.rmtree it when done.
+
+    If no -wal is present (or it is already empty), the original path is returned
+    unchanged and tempdir is None.
+    """
+    wal = source_db.with_name(source_db.name + "-wal")
+    if not wal.exists() or wal.stat().st_size == 0:
+        return source_db, None
+    tmp = Path(tempfile.mkdtemp(prefix="zkm-wa-"))
+    db_copy = tmp / source_db.name
+    shutil.copy2(source_db, db_copy)
+    for suffix in ("-wal", "-shm"):
+        sib = source_db.with_name(source_db.name + suffix)
+        if sib.exists():
+            shutil.copy2(sib, tmp / sib.name)
+    _con = sqlite3.connect(db_copy)
+    _con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    _con.commit()
+    _con.close()
+    return db_copy, tmp
+
+
 # ── Main entry point ─────────────────────────────────────────────────────────────
 
 def convert(
@@ -238,101 +269,106 @@ def convert(
     db_state = load_state(store_path, source_db)
     watermark_ms: int = db_state.get("watermark_ms", 0)
 
-    con = sqlite3.connect(source_db)
+    db_to_open, tmpdir = _wal_safe_source(source_db)
+    con = sqlite3.connect(db_to_open)
     con.row_factory = sqlite3.Row
 
-    jid_map = _build_jid_map(con)
-    msg_cols = _table_columns(con, "message")
-    has_revoked_col = "revoked" in msg_cols
-    has_quoted = _table_exists(con, "message_quoted")
-    has_media = _table_exists(con, "message_media")
+    try:
+        jid_map = _build_jid_map(con)
+        msg_cols = _table_columns(con, "message")
+        has_revoked_col = "revoked" in msg_cols
+        has_quoted = _table_exists(con, "message_quoted")
+        has_media = _table_exists(con, "message_media")
 
-    rows = _query_messages(
-        con, watermark_ms,
-        has_revoked_col=has_revoked_col,
-        has_quoted_table=has_quoted,
-        has_media_table=has_media,
-    )
-
-    # Group new rows by (chat_jid, day_str)
-    by_chat_day: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    max_ts_ms = watermark_ms
-    for row in rows:
-        chat_jid = jid_map.get(row["chat_jid_row_id"], f"unknown@{row['chat_jid_row_id']}")
-        ts_ms: int = row["timestamp"]
-        ts = datetime.fromtimestamp(ts_ms / 1000, tz=tz)
-        day_str = ts.strftime("%Y-%m-%d")
-
-        if row["from_me"]:
-            sender_jid = owner_jid
-        elif row["sender_jid_row_id"] and row["sender_jid_row_id"] in jid_map:
-            sender_jid = jid_map[row["sender_jid_row_id"]]
-        else:
-            sender_jid = chat_jid
-
-        by_chat_day[(chat_jid, day_str)].append({
-            "key_id": row["key_id"],
-            "ts": ts,
-            "timestamp_ms": ts_ms,
-            "from_me": bool(row["from_me"]),
-            "sender_jid": sender_jid,
-            "text_data": row["text_data"],
-            "chat_jid_row_id": row["chat_jid_row_id"],
-            "chat_name": row["chat_name"],
-            "quoted_key_id": row["quoted_key_id"],
-            "mime_type": row["mime_type"],
-            "media_path": row["media_path"],
-            "revoked": bool(row["revoked"]),
-        })
-        if ts_ms > max_ts_ms:
-            max_ts_ms = ts_ms
-
-    inbox_index: dict[str, Path] = build_canonical_index(store_path, "inbox/whatsapp")
-    written: list[Path] = []
-    total = len(by_chat_day)
-
-    for i, ((chat_jid, day_str), new_msgs) in enumerate(sorted(by_chat_day.items())):
-        if progress:
-            progress(i, total, f"{chat_jid} {day_str}")
-
-        tid = _thread_id(chat_jid)
-        out_dir = store_path / "chat" / "whatsapp" / tid
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{day_str}.md"
-
-        # Merge with existing manifest (dedup on key_id)
-        existing = _load_existing_manifest(out_path)
-        new_by_key = {m["key_id"]: m for m in new_msgs}
-        if not (set(new_by_key) - set(existing)):
-            continue  # all new key_ids already in file → skip (no change)
-
-        all_msgs_by_key = {**{k: _reconstitute(v, tz) for k, v in existing.items()}, **new_by_key}
-        all_msgs = sorted(all_msgs_by_key.values(), key=lambda m: (m["timestamp_ms"], m["key_id"]))
-
-        # Determine participants
-        sample = new_msgs[0]
-        participants = _build_participants(
-            con, chat_jid, sample["chat_jid_row_id"], jid_map, owner_jid, all_msgs
+        rows = _query_messages(
+            con, watermark_ms,
+            has_revoked_col=has_revoked_col,
+            has_quoted_table=has_quoted,
+            has_media_table=has_media,
         )
 
-        # Handle media → CAS + inbox symlink (W6)
-        for m in all_msgs:
-            if m.get("media_path"):
-                _handle_media(m, store_path, tid, out_path, chat_jid, inbox_index)
+        # Group new rows by (chat_jid, day_str)
+        by_chat_day: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        max_ts_ms = watermark_ms
+        for row in rows:
+            chat_jid = jid_map.get(row["chat_jid_row_id"], f"unknown@{row['chat_jid_row_id']}")
+            ts_ms: int = row["timestamp"]
+            ts = datetime.fromtimestamp(ts_ms / 1000, tz=tz)
+            day_str = ts.strftime("%Y-%m-%d")
 
-        chat_name = sample.get("chat_name")
-        rendered = _render_file(
-            chat_jid=chat_jid,
-            chat_name=chat_name,
-            day_str=day_str,
-            thread_id=tid,
-            participants=participants,
-            messages=all_msgs,
-        )
-        write_atomic(out_path, rendered)
-        written.append(out_path)
+            if row["from_me"]:
+                sender_jid = owner_jid
+            elif row["sender_jid_row_id"] and row["sender_jid_row_id"] in jid_map:
+                sender_jid = jid_map[row["sender_jid_row_id"]]
+            else:
+                sender_jid = chat_jid
 
-    con.close()
+            by_chat_day[(chat_jid, day_str)].append({
+                "key_id": row["key_id"],
+                "ts": ts,
+                "timestamp_ms": ts_ms,
+                "from_me": bool(row["from_me"]),
+                "sender_jid": sender_jid,
+                "text_data": row["text_data"],
+                "chat_jid_row_id": row["chat_jid_row_id"],
+                "chat_name": row["chat_name"],
+                "quoted_key_id": row["quoted_key_id"],
+                "mime_type": row["mime_type"],
+                "media_path": row["media_path"],
+                "revoked": bool(row["revoked"]),
+            })
+            if ts_ms > max_ts_ms:
+                max_ts_ms = ts_ms
+
+        inbox_index: dict[str, Path] = build_canonical_index(store_path, "inbox/whatsapp")
+        written: list[Path] = []
+        total = len(by_chat_day)
+
+        for i, ((chat_jid, day_str), new_msgs) in enumerate(sorted(by_chat_day.items())):
+            if progress:
+                progress(i, total, f"{chat_jid} {day_str}")
+
+            tid = _thread_id(chat_jid)
+            out_dir = store_path / "chat" / "whatsapp" / tid
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"{day_str}.md"
+
+            # Merge with existing manifest (dedup on key_id)
+            existing = _load_existing_manifest(out_path)
+            new_by_key = {m["key_id"]: m for m in new_msgs}
+            if not (set(new_by_key) - set(existing)):
+                continue  # all new key_ids already in file → skip (no change)
+
+            all_msgs_by_key = {**{k: _reconstitute(v, tz) for k, v in existing.items()}, **new_by_key}
+            all_msgs = sorted(all_msgs_by_key.values(), key=lambda m: (m["timestamp_ms"], m["key_id"]))
+
+            # Determine participants
+            sample = new_msgs[0]
+            participants = _build_participants(
+                con, chat_jid, sample["chat_jid_row_id"], jid_map, owner_jid, all_msgs
+            )
+
+            # Handle media → CAS + inbox symlink (W6)
+            for m in all_msgs:
+                if m.get("media_path"):
+                    _handle_media(m, store_path, tid, out_path, chat_jid, inbox_index)
+
+            chat_name = sample.get("chat_name")
+            rendered = _render_file(
+                chat_jid=chat_jid,
+                chat_name=chat_name,
+                day_str=day_str,
+                thread_id=tid,
+                participants=participants,
+                messages=all_msgs,
+            )
+            write_atomic(out_path, rendered)
+            written.append(out_path)
+
+    finally:
+        con.close()
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     if max_ts_ms > watermark_ms:
         save_state(store_path, source_db, {"watermark_ms": max_ts_ms})

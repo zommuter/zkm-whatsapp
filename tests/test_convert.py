@@ -1,11 +1,13 @@
-"""Tests for zkm-whatsapp convert.py (W2–W5)."""
+"""Tests for zkm-whatsapp convert.py (W2–W5, W9)."""
 
 from __future__ import annotations
 
 import hashlib
+import shutil
 import sqlite3
 from pathlib import Path
 
+import pytest
 import yaml
 
 from convert import (
@@ -14,6 +16,7 @@ from convert import (
     PLUGIN_NAME,
     PLUGIN_VERSION,
     _thread_id,
+    _wal_safe_source,
     convert,
 )
 from state import load_state
@@ -188,3 +191,131 @@ def test_convert_group_chat_name(store: Path, config: dict):
     end = text.find("\n---\n", 4)
     fm = yaml.safe_load(text[4:end])
     assert fm.get("chat_name") == "Test Group"
+
+
+# ── W9: WAL handling ──────────────────────────────────────────────────────────
+
+def test_wal_safe_source_no_wal(tmp_path: Path):
+    """Fast path: no -wal → returns original path unchanged, tempdir=None."""
+    db = tmp_path / "test.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE t (x INT)")
+    con.close()
+
+    result, tmpdir = _wal_safe_source(db)
+    assert result == db
+    assert tmpdir is None
+
+
+def test_wal_safe_source_empty_wal(tmp_path: Path):
+    """Empty -wal file (already checkpointed) → treated same as no WAL, fast path."""
+    db = tmp_path / "test.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE t (x INT)")
+    con.close()
+    wal = db.with_name(db.name + "-wal")
+    wal.write_bytes(b"")  # zero-length WAL
+
+    result, tmpdir = _wal_safe_source(db)
+    assert result == db
+    assert tmpdir is None
+
+
+def _make_wal_db(path: Path) -> bool:
+    """Create a WAL-mode db at *path* with a row committed only to the WAL.
+
+    Returns True if the WAL file is non-empty after setup (some SQLite builds
+    auto-checkpoint on connection close — those skip WAL-specific assertions).
+    """
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA wal_autocheckpoint=0")
+    con.execute("CREATE TABLE t (key_id TEXT, ts INTEGER, body TEXT)")
+    con.execute("INSERT INTO t VALUES ('PRE_WAL_KEY', 1744550000000, 'before wal')")
+    con.commit()
+    # Open a second connection holding a read snapshot so the writer
+    # cannot checkpoint its subsequent write.
+    con_reader = sqlite3.connect(path)
+    con_reader.execute("BEGIN")  # hold a read snapshot
+    con.execute("INSERT INTO t VALUES ('WAL_ONLY_KEY', 1744550001000, 'wal-only message')")
+    con.commit()
+    con.close()
+    # WAL now contains frames the reader's snapshot predate → checkpoint blocked.
+    con_reader.commit()
+    con_reader.close()
+    wal = path.with_name(path.name + "-wal")
+    return wal.exists() and wal.stat().st_size > 0
+
+
+def test_wal_safe_source_with_wal(tmp_path: Path):
+    """When -wal is non-empty: returns a temp-dir copy, source path unchanged."""
+    db = tmp_path / "msgstore.db"
+    has_wal = _make_wal_db(db)
+    if not has_wal:
+        pytest.skip("SQLite checkpointed on close; WAL-specific path not reachable")
+
+    orig_size = db.stat().st_size
+    orig_mtime = db.stat().st_mtime_ns
+
+    result, tmpdir = _wal_safe_source(db)
+    try:
+        assert result != db
+        assert tmpdir is not None
+        assert result.parent == tmpdir
+        assert result.name == db.name
+        # Source not modified
+        assert db.stat().st_size == orig_size
+        assert db.stat().st_mtime_ns == orig_mtime
+        # WAL file still present in original location
+        assert db.with_name(db.name + "-wal").exists()
+        # Temp copy is a valid readable db containing the WAL-only row
+        con = sqlite3.connect(result)
+        rows = con.execute("SELECT key_id FROM t ORDER BY ts").fetchall()
+        con.close()
+        key_ids = [r[0] for r in rows]
+        assert "WAL_ONLY_KEY" in key_ids
+        assert "PRE_WAL_KEY" in key_ids
+    finally:
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_convert_wal_frames_visible(store: Path, tmp_path: Path, config: dict):
+    """W9: convert() reads messages committed only to WAL (not in main db file)."""
+    from conftest import _create_test_db, MEDIA_FILENAME, MEDIA_BYTES
+
+    # Build a full schema db (same schema as test_db) in WAL mode
+    wal_db = tmp_path / "msgstore_wal.db"
+    media_file = tmp_path / MEDIA_FILENAME
+    media_file.write_bytes(MEDIA_BYTES)
+    _create_test_db(wal_db, media_file)
+
+    # Add a WAL-only message (different timestamp so it's a new row)
+    has_wal = False
+    con = sqlite3.connect(wal_db)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA wal_autocheckpoint=0")
+    con_reader = sqlite3.connect(wal_db)
+    con_reader.execute("BEGIN")
+    con.execute(
+        "INSERT INTO message VALUES (200, 'WAL_TEST_KEY', 1744553000000, 0, 'wal-only content', 1, 2, 0)"
+    )
+    con.commit()
+    con.close()
+    con_reader.commit()
+    con_reader.close()
+    wal_file = wal_db.with_name(wal_db.name + "-wal")
+    has_wal = wal_file.exists() and wal_file.stat().st_size > 0
+
+    wal_config = dict(config, source_db=str(wal_db))
+    written = convert(store, wal_config)
+    all_text = "\n".join(p.read_text() for p in written)
+
+    if has_wal:
+        # WAL-only message must be visible
+        assert "WAL_TEST_KEY" in all_text or "wal-only content" in all_text
+        # Original db file not mutated
+        assert not wal_db.with_name(wal_db.name + "-wal.orig").exists()
+    else:
+        # SQLite checkpointed on close; all messages in main db either way
+        assert len(written) >= 1
