@@ -9,7 +9,7 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
 
 ## Items
 
-- [ ] Fix day-file rewrite data loss: persist text/quoted/media in manifest [ROUTINE] <!-- id:w6f -->
+- [x] Fix day-file rewrite data loss: persist text/quoted/media in manifest [ROUTINE] <!-- id:w6f -->
   - **Acceptance**: When a new same-day message triggers a day-file rewrite, all
     previously written body lines survive byte-identically: text bodies, `↩ (re: …)`
     reply prefixes, and `[media: <mime> → <cas_rel>]` lines. Mechanism: `messages:`
