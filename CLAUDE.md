@@ -6,6 +6,19 @@ zkm plugin: convert decrypted WhatsApp `msgstore.db` (SQLite) to per-chat-day tr
 **Fetch boundary**: ingest-only — reads a decrypted `msgstore.db` via `source_db` config.
 Decryption (crypt15 → plain SQLite) is a separate fetch-role step (see `scripts/wa_decrypt_pilot.py`).
 
+See `ARCHITECTURE.md` for design decisions with rationale and rejected alternatives.
+See `ROADMAP.md` for the executor-facing task queue; this repo's `TODO.md` is a stub
+pointing at the central ledger (`~/src/zkm/TODO.md`, `W` prefix).
+
+## Commands
+
+```bash
+uv sync --extra dev          # dev env; zkm core resolved as editable ../../
+uv run pytest                # full suite (hermetic — synthetic SQLite fixtures, no network)
+uv run pytest -k <expr>      # one test / one roadmap item's done-check
+uv run ruff check <files>    # lint (E, F, I, UP; line-length 100) — keep YOUR files clean
+```
+
 ## Architecture
 
 ```
@@ -41,6 +54,29 @@ uv sync --extra dev
 uv run pytest
 ```
 
+## Gotchas (hard-won; do not rediscover)
+
+- **Plugin dir lands on `sys.path`** (convert.py inserts it so `state` imports work
+  under zkm's importlib loader). Consequence: NEVER name a module here after a stdlib
+  module (`secrets.py`, `json.py`, …) — it would shadow stdlib for everything imported
+  afterwards. That's why the key-resolution module is `keysource.py`.
+- **Tests are hermetic + published-generic**: synthetic SQLite fixtures built in
+  `tmp_path` (`tests/conftest.py:_create_test_db`), placeholder phone numbers only
+  (`4179111…`), no network, no `~/knowledge`, no real msgstore.db. The committed
+  `tests/fixtures/msgstore.db` exists only for `plugin.yaml` `conformance.config`
+  (core conformance suite) and is synthetic too.
+- **`_reconstitute()` rebuilds messages from the manifest only** — anything not
+  persisted in the `messages:` manifest is LOST when a day file is rewritten for new
+  same-day messages. Verified 2026-06-12: text bodies, reply prefixes AND media lines
+  all blank out on rewrite (worse than the central-ledger w6f note, which mentions
+  media only). Fix = roadmap id:w6f (persist text/quoted/media in the manifest).
+  When extending the manifest schema, keep `_load_existing_manifest` backward-readable.
+- **Watermark is a speed optimisation only** — correctness comes from key_id dedup.
+  Deleting `.zkm-state/zkm-whatsapp.json` is always safe.
+- **WAL tests can self-skip**: some SQLite builds checkpoint on close; WAL-specific
+  tests detect that and `pytest.skip` — a skip there is not a failure.
+- **OS / tooling**: Manjaro — `pamac`, never `pacman -S`. Python via `uv` only.
+
 ## Schema compatibility note
 
 Written against the v5+ msgstore.db schema (jid table separate from chat). The `revoked`
@@ -70,3 +106,8 @@ messages from the main DB and backups collapse on `key_id` automatically.
 
 **Automatic multi-source iteration** is deferred. Trigger: a concrete need to recover messages
 absent from the current `msgstore.db` (e.g. after a phone wipe / re-install gap).
+
+## Relay contract <!-- fables-executor contract v1 -->
+
+This repo is managed by a reviewer/executor relay. Load the `fables-executor` skill
+(`/fables-executor`) before working on any item, then follow its rules exactly.
