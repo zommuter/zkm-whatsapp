@@ -22,9 +22,9 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Tests**: `tests/test_rewrite_persistence.py` — `test_rewrite_preserves_text_body`,
     `test_rewrite_preserves_reply_prefix`, `test_rewrite_preserves_media_line`,
     `test_manifest_media_entry_has_mime_and_sha256`,
-    `test_manifest_revoked_entry_has_no_text`,
-    `test_old_manifest_without_new_keys_still_loads` — all `# roadmap:w6f` (currently RED
-    except the legacy-load guard, which is red via its sibling assertions)
+    `test_manifest_text_persisted_except_revoked`,
+    `test_old_manifest_without_new_keys_still_loads` — all `# roadmap:w6f`, all 6
+    currently RED
   - **Done-check**: `uv run pytest tests/test_rewrite_persistence.py`
   - **Context**: `convert.py:_render_file` (manifest construction), `_reconstitute`,
     `_load_existing_manifest`. See ARCHITECTURE.md "Day-file rewrite" for the chosen
@@ -41,9 +41,11 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     current default `owner@s.whatsapp.net`. Update `plugin.yaml` (`owner_jid`
     `required: false`, description mentions auto-detection) and README.
   - **Tests**: `tests/test_owner_jid.py` — `test_owner_jid_derived_when_config_absent`,
-    `test_explicit_owner_jid_overrides_db`, `test_owner_jid_fallback_when_underivable`
-    — all `# roadmap:f5b7` (currently RED except the override test's existing-behaviour
-    half; the derived assertions are red)
+    `test_owner_jid_derivation_picks_most_frequent_sender`,
+    `test_plugin_yaml_owner_jid_optional` (all RED) +
+    `test_owner_jid_fallback_when_underivable` (already-green regression guard for
+    the fallback branch) — all `# roadmap:f5b7`. Explicit-config override is guarded
+    by the pre-existing `test_convert_owner_jid_in_participants`.
   - **Done-check**: `uv run pytest tests/test_owner_jid.py`
   - **Context**: `convert.py:convert` (config read), new helper `_detect_owner_jid(con)`.
     The shared conftest db has only `sender_jid_row_id=NULL` for `from_me` rows; the
@@ -59,9 +61,9 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     `_table_exists`, same pattern as `message_quoted`). Informal "here's my new number"
     text heuristics are explicitly OUT of scope (separate item id:bf12).
   - **Tests**: `tests/test_number_change.py` — `test_number_change_rendered_in_body`,
-    `test_number_change_manifest_entry`, `test_number_change_survives_rewrite`,
-    `test_no_number_change_table_is_harmless` — all `# roadmap:w11` (currently RED
-    except the harmless-absence guard)
+    `test_number_change_manifest_entry`, `test_number_change_survives_rewrite`
+    (all RED) + `test_no_number_change_table_is_harmless` (already-green regression
+    guard for the absent-table branch) — all `# roadmap:w11`
   - **Done-check**: `uv run pytest tests/test_number_change.py`
   - **Context**: `convert.py:_query_messages` (add probed LEFT JOIN), `_render_file`,
     `_reconstitute`. Synthetic schema defined in the test file. Relates to entity
