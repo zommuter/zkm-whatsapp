@@ -69,7 +69,10 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     `_reconstitute`. Synthetic schema defined in the test file. Relates to entity
     alias linking (Phase 4) — emit nothing entity-shaped yet.
 
-- [ ] W-key: resolve WhatsApp backup key from Bitwarden CLI or OS keyring [HARD — strong model] <!-- id:w-key -->
+- [x] W-key: resolve WhatsApp backup key from Bitwarden CLI or OS keyring [HARD — strong model] <!-- id:w-key -->
+  - **Done**: 2026-06-12 relay handoff C5 — `keysource.py` + pilot `--key-source` +
+    `plugin.yaml` `backup_key_source`; 12 hermetic tests in `tests/test_keysource.py`
+    (fake `bw`/`secret-tool` on PATH). Two judgment calls queued in REVIEW_ME.md.
   - **Why HARD**: secret-handling surface — scheme syntax, error taxonomy and
     validation strictness are judgment calls; touches the fetch-role boundary
     (pilot script) rather than `convert()`.
