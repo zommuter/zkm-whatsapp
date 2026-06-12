@@ -25,3 +25,9 @@ config:
   timezone:
     required: false
     description: IANA timezone name for day-boundary and HH:MM formatting. Defaults to system timezone.
+  backup_key_source:
+    required: false
+    description: >-
+      Secret source for the crypt15 backup key, used by the fetch-role decryption
+      step (NOT by convert). Formats: bitwarden:<item-id> or
+      keyring:<service>:<account>. See keysource.py.

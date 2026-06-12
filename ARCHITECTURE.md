@@ -1,0 +1,118 @@
+# zkm-whatsapp architecture
+
+Design decisions with rationale and rejected alternatives. Scope meeting:
+`~/src/zkm/docs/meeting-notes/2026-06-03-0952-zkm-whatsapp-scope.md`.
+
+## Boundary: ingest-only, decryption is fetch-role
+
+The plugin reads an already-**decrypted** `msgstore.db` (`source_db` config). Decrypting
+`msgstore.db.crypt15` happens outside `convert()` (pilot: `scripts/wa_decrypt_pilot.py`
+using wa-crypt-tools).
+
+- **Rationale**: keeps secrets out of the convert path; `zkm convert whatsapp` stays
+  deterministic and hermetically testable; wa-crypt-tools is a heavy optional dep that
+  must not burden the plugin install.
+- **Rejected**: in-plugin decryption (would force the 64-char hex backup key through
+  plugin config and make every convert run touch secret material).
+- Key *resolution* for the fetch step lives in `keysource.py` (`bitwarden:` /
+  `keyring:` schemes via subprocess) — see "Secrets" below.
+
+## Parser: stdlib sqlite3, schema-probed
+
+All reads go through `sqlite3` from the stdlib; optional schema features are probed
+(`PRAGMA table_info` for the `revoked` column, `sqlite_master` for `message_quoted`,
+`message_media`, `group_participant_user`) and degrade gracefully when absent.
+
+- **Rationale**: zero extra DB deps; msgstore.db schema drifts across WhatsApp versions,
+  so probing beats pinning one schema version.
+- **Rejected**: SQLAlchemy/ORM (dependency weight, no benefit for read-only queries);
+  hard-coding one schema version (breaks silently on older/newer backups).
+
+## Segmentation: one file per chat per day
+
+Output is `chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md`.
+
+- **Rationale**: bounded file size, stable paths, natural temporal granularity for the
+  git-as-temporal-index model; day boundary is computed in the configured (or system)
+  timezone.
+- **Rejected**: one file per thread (unbounded growth, constant rewrite churn defeats
+  git diffing); one file per message (inode explosion, useless retrieval granularity).
+- **Future (W7, gated)**: smarter burst/temporal-density re-segmentation must be
+  *additive* and MUST NOT rewrite chat-level `thread_id`.
+
+## Identity: key_id everywhere
+
+- `thread_id = sha256(chat_jid)[:16]` — **rejected**: raw JID in paths (phone numbers in
+  filenames violate the published-generic policy and leak PII into git paths).
+- `message_id = whatsapp:<chat_jid>:<key_id>` — protocol-level `key_id` is stable across
+  devices and WA-Web, enabling future merge with WA-Web exports.
+- **Dedup key = `key_id`** in the per-file `messages:` manifest. **Rejected**: rowid
+  (renumbers across backup-restore) and content hash (revoked/edited messages mutate).
+
+## Source state: watermark as optimisation only
+
+`.zkm-state/zkm-whatsapp.json` maps absolute `source_db` path → `watermark_ms`
+(max imported timestamp). Correctness always comes from key_id dedup; the watermark only
+limits the query. Deleting the state file is safe; multi-source ingest (daily backup
+snapshots) works by pointing `source_db` at each decrypted snapshot oldest-first.
+
+## Day-file rewrite + manifest reconstitution (known v1 flaw → id:w6f)
+
+When new same-day messages arrive, the whole day file is re-rendered: existing messages
+are reconstituted from the `messages:` manifest and merged with new rows. The v1
+manifest stores only `key_id/timestamp/sender_jid/status`, so a rewrite **blanks text
+bodies, reply prefixes and media lines** of prior messages (verified 2026-06-12 —
+broader than the original media-only observation).
+
+- **Fix direction (chosen)**: persist `text`, `quoted_key_id` and `media: {mime, sha256}`
+  in manifest entries so reconstitution is lossless and the file is self-contained.
+  The CAS path is derivable from sha256 (`originals/_objects/<sha[:2]>/<sha[2:]>`).
+- **Rejected**: re-querying the DB without watermark for affected days (loses messages
+  that exist only in older backup snapshots, breaking the multi-source dedup design);
+  parsing body lines back (fragile round-trip through rendered markdown).
+- Backward compat: `_load_existing_manifest` must keep reading old manifests without
+  the new keys (their bodies stay blank — healing old files is out of scope).
+
+## Media: CAS + inbox symlink + sidecar (W6)
+
+Media files go to `chat/whatsapp/<tid>/originals/_objects/` via core `zkm.cas.write_object`
+(content-addressed, idempotent); a human-browsable symlink + `.origin.json` producer
+sidecar lands in `inbox/whatsapp/<tid>/` via `zkm.inbox.symlink_with_sidecar`.
+
+- **Rationale**: single core implementation of the object-storage contract
+  (`~/src/zkm/docs/object-storage.md`); dedup across re-runs for free.
+- **Rejected**: copying media next to the day file (duplicates on rewrite, no dedup).
+
+## WAL safety (W9)
+
+A live msgstore.db runs in WAL mode. `_wal_safe_source()` copies db + `-wal` + `-shm`
+to a tempdir and checkpoints (TRUNCATE) the *copy* when a non-empty `-wal` exists; the
+original is never written.
+
+- **Rejected**: opening the source read-only (SQLite may still recover/checkpoint into
+  `-shm`/`-wal`); `file:...?immutable=1` URI (silently misses uncheckpointed WAL frames).
+
+## Secrets (W-key)
+
+`keysource.py:resolve_backup_key(source)` resolves the 64-char hex backup key from:
+
+- `bitwarden:<item-id>` → `bw get password <item-id>`
+- `keyring:<service>:<account>` → `secret-tool lookup service <service> account <account>`
+
+Both shell out to existing agents; output is validated as exactly 64 hex chars.
+
+- **Rationale**: `.zkm-secrets.yaml` + `*.key` files are gitignored, which blocks
+  automation (W10) — an agent-backed source is scriptable and never lands on disk.
+  Subprocess against `bw`/`secret-tool` keeps the plugin dependency-free and is
+  hermetically testable with fake executables on PATH.
+- **Rejected**: `keyring` Python package (extra dep inside zkm's sealed uv-tool env);
+  plaintext key file as the *supported* path (stays possible for the pilot script but
+  is not the automation story).
+- Module is named `keysource.py`, NOT `secrets.py` — the plugin dir is inserted into
+  `sys.path`, so a `secrets.py` would shadow the stdlib module.
+
+## Determinism contract
+
+Sort by `(timestamp, key_id)`; fixed sentinels (`«deleted»`, `↩ (re: …)`); no locale
+strings in output; YAML dumped with `sort_keys=False, allow_unicode=True`. Re-running
+on unchanged input writes nothing (`convert()` returns `[]`).
