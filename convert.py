@@ -161,6 +161,13 @@ def _load_existing_manifest(path: Path) -> dict[str, dict]:
 
 # ── File rendering ────────────────────────────────────────────────────────────────
 
+def _sha256_from_cas_rel(cas_rel: str) -> str:
+    """Extract the sha256 hex digest from a CAS-relative path (``…/_objects/aa/rest``)."""
+    parts = Path(cas_rel).parts
+    # last two parts: <sha[:2]> / <sha[2:]>
+    return parts[-2] + parts[-1]
+
+
 def _render_file(
     *,
     chat_jid: str,
@@ -171,15 +178,31 @@ def _render_file(
     messages: list[dict],
 ) -> str:
     """Render a complete per-chat-day .md file (frontmatter + body)."""
-    manifest = [
-        {
+    manifest = []
+    for m in messages:
+        entry: dict = {
             "key_id": m["key_id"],
             "timestamp": m["ts"].isoformat(),
             "sender_jid": m["sender_jid"],
             "status": "revoked" if m["revoked"] else "sent",
         }
-        for m in messages
-    ]
+        # Persist text so reconstitution is lossless (roadmap:w6f).
+        # Revoked messages must NOT leak text into the manifest.
+        if not m["revoked"]:
+            if m.get("mime_type") or m.get("media_path"):
+                # Media: persist mime + sha256 so cas_rel can be re-derived.
+                cas_rel = m.get("cas_rel")
+                if cas_rel:
+                    entry["media"] = {
+                        "mime": m["mime_type"] or "application/octet-stream",
+                        "sha256": _sha256_from_cas_rel(cas_rel),
+                    }
+            else:
+                if m.get("text_data") is not None:
+                    entry["text"] = m["text_data"]
+            if m.get("quoted_key_id"):
+                entry["quoted_key_id"] = m["quoted_key_id"]
+        manifest.append(entry)
 
     fm: dict = {
         "source": PLUGIN_NAME,
@@ -339,7 +362,7 @@ def convert(
             if not (set(new_by_key) - set(existing)):
                 continue  # all new key_ids already in file → skip (no change)
 
-            all_msgs_by_key = {**{k: _reconstitute(v, tz) for k, v in existing.items()}, **new_by_key}
+            all_msgs_by_key = {**{k: _reconstitute(v, tz, thread_id=tid) for k, v in existing.items()}, **new_by_key}
             all_msgs = sorted(all_msgs_by_key.values(), key=lambda m: (m["timestamp_ms"], m["key_id"]))
 
             # Determine participants
@@ -378,23 +401,48 @@ def convert(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────────
 
-def _reconstitute(entry: dict, tz: TzInfo) -> dict:
-    """Re-create a message dict from a manifest entry (for merging with existing files)."""
+def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> dict:
+    """Re-create a message dict from a manifest entry (for merging with existing files).
+
+    New entries (roadmap:w6f) carry ``text``, ``quoted_key_id`` and
+    ``media: {mime, sha256}``; old entries without these keys load without error
+    (bodies stay blank — healing pre-existing files is out of scope).
+
+    Pass ``thread_id`` to enable re-derivation of ``cas_rel`` for media entries.
+    """
     ts = datetime.fromisoformat(entry["timestamp"]).astimezone(tz)
-    return {
+    revoked = entry.get("status") == "revoked"
+
+    # Recover media info and re-derive cas_rel from stored sha256 (roadmap:w6f).
+    mime_type: str | None = None
+    cas_rel: str | None = None
+    media = entry.get("media")
+    if media and thread_id:
+        mime_type = media.get("mime")
+        sha = media.get("sha256", "")
+        if sha:
+            cas_rel = f"chat/whatsapp/{thread_id}/originals/_objects/{sha[:2]}/{sha[2:]}"
+    elif media:
+        mime_type = media.get("mime")
+
+    msg: dict = {
         "key_id": entry["key_id"],
         "ts": ts,
         "timestamp_ms": int(ts.timestamp() * 1000),
         "from_me": False,
         "sender_jid": entry["sender_jid"],
-        "text_data": None,
+        "text_data": entry.get("text"),
         "chat_jid_row_id": None,
         "chat_name": None,
-        "quoted_key_id": None,
-        "mime_type": None,
+        "quoted_key_id": entry.get("quoted_key_id"),
+        "mime_type": mime_type,
+        # media_path=None: do not re-run _handle_media on stale paths (roadmap:w6f).
         "media_path": None,
-        "revoked": entry.get("status") == "revoked",
+        "revoked": revoked,
     }
+    if cas_rel:
+        msg["cas_rel"] = cas_rel
+    return msg
 
 
 def _build_participants(
