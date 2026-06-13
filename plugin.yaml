@@ -20,8 +20,11 @@ config:
     required: true
     description: Path to decrypted msgstore.db (SQLite). Decryption is a separate fetch-role step.
   owner_jid:
-    required: true
-    description: Store owner's WhatsApp JID (e.g. 41791234567@s.whatsapp.net). Used to identify outgoing messages.
+    required: false
+    description: >-
+      Store owner's WhatsApp JID (e.g. 41791234567@s.whatsapp.net). Used to identify outgoing messages.
+      When absent, auto-detected from the most frequent attributed from_me sender in the DB;
+      falls back to owner@s.whatsapp.net if underivable.
   timezone:
     required: false
     description: IANA timezone name for day-boundary and HH:MM formatting. Defaults to system timezone.

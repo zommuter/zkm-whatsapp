@@ -32,7 +32,7 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     the central-ledger media-only framing). Keep determinism: identical re-runs still
     return `[]`.
 
-- [ ] W8: auto-detect owner_jid from the DB when config omits it [ROUTINE] <!-- id:f5b7 -->
+- [x] W8: auto-detect owner_jid from the DB when config omits it [ROUTINE] <!-- id:f5b7 -->
   - **Acceptance**: `owner_jid` becomes optional. When absent from config, derive it:
     `SELECT user || '@' || server FROM jid WHERE _id = (SELECT sender_jid_row_id FROM
     message WHERE from_me=1 AND sender_jid_row_id IS NOT NULL GROUP BY
@@ -51,7 +51,7 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     The shared conftest db has only `sender_jid_row_id=NULL` for `from_me` rows; the
     test file builds its own db copy with an attributed from_me row.
 
-- [ ] W11a: render message_system_number_change as system-event lines [ROUTINE] <!-- id:w11 -->
+- [x] W11a: render message_system_number_change as system-event lines [ROUTINE] <!-- id:w11 -->
   - **Acceptance**: When a `message_system_number_change` table exists
     (`message_row_id, old_jid_row_id, new_jid_row_id`), messages joined to it render as
     `«number change: <old_jid> → <new_jid>»` body lines (same `[HH:MM] sender: … <!--

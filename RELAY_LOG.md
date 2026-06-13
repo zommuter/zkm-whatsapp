@@ -11,3 +11,9 @@ Worked id:w6f — fixed day-file rewrite data loss by persisting `text`, `quoted
 ## 2026-06-12 23:13 — executor (sonnet, relay-loop)
 
 feat(convert): persist text/quoted/media in manifest to fix rewrite data loss (id:w6f) — all 6 test_rewrite_persistence tests now pass
+
+## 2026-06-13 — executor (sonnet)
+
+Worked id:f5b7 — added `_detect_owner_jid(con)` helper (most-frequent attributed from_me sender query); convert() resolves owner_jid from config first, auto-detect second, default fallback third; plugin.yaml `owner_jid` set to `required: false` with updated description; all 4 test_owner_jid.py tests pass.
+Worked id:w11 — added `has_number_change_table` probe and LEFT JOIN on `message_system_number_change` in `_query_messages`; messages with nc rows get `number_change: {old, new}` dict; `_render_file` renders `«number change: old → new»` body and persists `status: system` + `number_change` in manifest; `_reconstitute` recovers number_change from manifest so lines survive rewrites; all 4 test_number_change.py tests pass; full suite 49 passed 1 skipped (pre-existing WAL skip), zero regressions.
+Friction: none.

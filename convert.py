@@ -81,6 +81,30 @@ def _build_jid_map(con: sqlite3.Connection) -> dict[int, str]:
     }
 
 
+def _detect_owner_jid(con: sqlite3.Connection) -> str | None:
+    """Derive owner JID from the most frequent attributed from_me sender.
+
+    SELECT user || '@' || server FROM jid WHERE _id = (
+        SELECT sender_jid_row_id FROM message
+        WHERE from_me = 1 AND sender_jid_row_id IS NOT NULL
+        GROUP BY sender_jid_row_id ORDER BY COUNT(*) DESC LIMIT 1)
+
+    Returns None if no qualifying rows exist.
+    """
+    row = con.execute("""
+        SELECT j.user || '@' || j.server
+        FROM jid j
+        WHERE j._id = (
+            SELECT sender_jid_row_id FROM message
+            WHERE from_me = 1 AND sender_jid_row_id IS NOT NULL
+            GROUP BY sender_jid_row_id
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        )
+    """).fetchone()
+    return row[0] if row else None
+
+
 def _query_messages(
     con: sqlite3.Connection,
     watermark_ms: int,
@@ -88,6 +112,7 @@ def _query_messages(
     has_revoked_col: bool,
     has_quoted_table: bool,
     has_media_table: bool,
+    has_number_change_table: bool,
 ) -> list[sqlite3.Row]:
     """Query all messages newer than watermark_ms."""
     revoked_expr = "m.revoked" if has_revoked_col else "0"
@@ -104,6 +129,14 @@ def _query_messages(
         "mm.mime_type, mm.file_path AS media_path"
         if has_media_table else "NULL AS mime_type, NULL AS media_path"
     )
+    nc_join = (
+        "LEFT JOIN message_system_number_change nc ON nc.message_row_id = m._id"
+        if has_number_change_table else ""
+    )
+    nc_cols = (
+        "nc.old_jid_row_id AS nc_old_jid_row_id, nc.new_jid_row_id AS nc_new_jid_row_id"
+        if has_number_change_table else "NULL AS nc_old_jid_row_id, NULL AS nc_new_jid_row_id"
+    )
     sql = f"""
         SELECT
             m._id AS row_id,
@@ -117,11 +150,13 @@ def _query_messages(
             c.jid_row_id AS chat_jid_row_id,
             c.subject AS chat_name,
             {quoted_key},
-            {media_cols}
+            {media_cols},
+            {nc_cols}
         FROM message m
         JOIN chat c ON c._id = m.chat_row_id
         {quoted_join}
         {media_join}
+        {nc_join}
         WHERE m.timestamp > ?
         ORDER BY m.timestamp, m.key_id
     """
@@ -180,15 +215,25 @@ def _render_file(
     """Render a complete per-chat-day .md file (frontmatter + body)."""
     manifest = []
     for m in messages:
+        nc = m.get("number_change")
+        if nc:
+            status = "system"
+        elif m["revoked"]:
+            status = "revoked"
+        else:
+            status = "sent"
         entry: dict = {
             "key_id": m["key_id"],
             "timestamp": m["ts"].isoformat(),
             "sender_jid": m["sender_jid"],
-            "status": "revoked" if m["revoked"] else "sent",
+            "status": status,
         }
+        if nc:
+            # Persist number_change so reconstitution rebuilds the system line.
+            entry["number_change"] = {"old": nc["old"], "new": nc["new"]}
         # Persist text so reconstitution is lossless (roadmap:w6f).
         # Revoked messages must NOT leak text into the manifest.
-        if not m["revoked"]:
+        elif not m["revoked"]:
             if m.get("mime_type") or m.get("media_path"):
                 # Media: persist mime + sha256 so cas_rel can be re-derived.
                 cas_rel = m.get("cas_rel")
@@ -226,7 +271,10 @@ def _render_file(
         sender = name_map.get(m["sender_jid"]) or m["sender_jid"]
         time_str = m["ts"].strftime("%H:%M")
 
-        if m["revoked"]:
+        nc = m.get("number_change")
+        if nc:
+            body = f"«number change: {nc['old']} → {nc['new']}»"
+        elif m["revoked"]:
             body = _DELETED_SENTINEL
         elif m["media_path"] or m["mime_type"]:
             cas_rel = m.get("cas_rel")
@@ -286,7 +334,6 @@ def convert(
     progress: ProgressCallback | None = None,
 ) -> list[Path]:
     source_db = Path(config["source_db"]).expanduser().resolve()
-    owner_jid: str = config.get("owner_jid", "owner@s.whatsapp.net")
     tz: TzInfo = ZoneInfo(config["timezone"]) if "timezone" in config else (datetime.now().astimezone().tzinfo or ZoneInfo("UTC"))
 
     db_state = load_state(store_path, source_db)
@@ -298,16 +345,24 @@ def convert(
 
     try:
         jid_map = _build_jid_map(con)
+
+        # Resolve owner_jid: explicit config overrides; otherwise auto-detect; fallback to default.
+        if "owner_jid" in config:
+            owner_jid: str = config["owner_jid"]
+        else:
+            owner_jid = _detect_owner_jid(con) or "owner@s.whatsapp.net"
         msg_cols = _table_columns(con, "message")
         has_revoked_col = "revoked" in msg_cols
         has_quoted = _table_exists(con, "message_quoted")
         has_media = _table_exists(con, "message_media")
+        has_number_change = _table_exists(con, "message_system_number_change")
 
         rows = _query_messages(
             con, watermark_ms,
             has_revoked_col=has_revoked_col,
             has_quoted_table=has_quoted,
             has_media_table=has_media,
+            has_number_change_table=has_number_change,
         )
 
         # Group new rows by (chat_jid, day_str)
@@ -326,7 +381,17 @@ def convert(
             else:
                 sender_jid = chat_jid
 
-            by_chat_day[(chat_jid, day_str)].append({
+            # Resolve number_change JIDs if present (roadmap:w11).
+            nc_old = row["nc_old_jid_row_id"]
+            nc_new = row["nc_new_jid_row_id"]
+            number_change = None
+            if nc_old is not None and nc_new is not None:
+                old_jid = jid_map.get(nc_old)
+                new_jid = jid_map.get(nc_new)
+                if old_jid and new_jid:
+                    number_change = {"old": old_jid, "new": new_jid}
+
+            msg_dict: dict = {
                 "key_id": row["key_id"],
                 "ts": ts,
                 "timestamp_ms": ts_ms,
@@ -339,7 +404,10 @@ def convert(
                 "mime_type": row["mime_type"],
                 "media_path": row["media_path"],
                 "revoked": bool(row["revoked"]),
-            })
+            }
+            if number_change:
+                msg_dict["number_change"] = number_change
+            by_chat_day[(chat_jid, day_str)].append(msg_dict)
             if ts_ms > max_ts_ms:
                 max_ts_ms = ts_ms
 
@@ -411,7 +479,11 @@ def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> d
     Pass ``thread_id`` to enable re-derivation of ``cas_rel`` for media entries.
     """
     ts = datetime.fromisoformat(entry["timestamp"]).astimezone(tz)
-    revoked = entry.get("status") == "revoked"
+    status = entry.get("status", "sent")
+    revoked = status == "revoked"
+
+    # Recover number_change data for system events (roadmap:w11).
+    number_change: dict | None = entry.get("number_change")
 
     # Recover media info and re-derive cas_rel from stored sha256 (roadmap:w6f).
     mime_type: str | None = None
@@ -442,6 +514,8 @@ def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> d
     }
     if cas_rel:
         msg["cas_rel"] = cas_rel
+    if number_change:
+        msg["number_change"] = number_change
     return msg
 
 
