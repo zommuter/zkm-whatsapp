@@ -30,3 +30,7 @@ review 20260613-1450: 1 docs-only commit audited clean, 49 tests green, acted on
 
 Worked id:cfd1 — renamed manifest field `status: system` → `message_type: system` for number-change entries. In `_render_file`, number-change entries now set `message_type: "system"` (messaging-namespaced) rather than `status: "system"` (core-owned iCal enum). `_reconstitute` now detects system events via `entry.get("message_type") == "system"` and only recovers `number_change` dict for such entries. Updated `test_number_change_manifest_entry` per ROADMAP spec: asserts `entry["message_type"] == "system"` and `entry.get("status") != "system"`. Full suite 49 passed 1 skipped, zero regressions.
 Friction: none.
+
+## 2026-06-13 15:24 — executor (sonnet, relay-loop)
+
+feat(convert): rename manifest status:system → message_type:system (id:cfd1) — 49 passed 1 skipped
