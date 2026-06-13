@@ -216,9 +216,7 @@ def _render_file(
     manifest = []
     for m in messages:
         nc = m.get("number_change")
-        if nc:
-            status = "system"
-        elif m["revoked"]:
+        if m["revoked"]:
             status = "revoked"
         else:
             status = "sent"
@@ -229,7 +227,9 @@ def _render_file(
             "status": status,
         }
         if nc:
-            # Persist number_change so reconstitution rebuilds the system line.
+            # Persist message_type + number_change so reconstitution rebuilds the system line.
+            # message_type: system is messaging-namespaced; status: stays core-owned (roadmap:cfd1).
+            entry["message_type"] = "system"
             entry["number_change"] = {"old": nc["old"], "new": nc["new"]}
         # Persist text so reconstitution is lossless (roadmap:w6f).
         # Revoked messages must NOT leak text into the manifest.
@@ -481,9 +481,11 @@ def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> d
     ts = datetime.fromisoformat(entry["timestamp"]).astimezone(tz)
     status = entry.get("status", "sent")
     revoked = status == "revoked"
+    # Detect system events via message_type (roadmap:cfd1; avoids colliding with core status: enum).
+    is_system = entry.get("message_type") == "system"
 
     # Recover number_change data for system events (roadmap:w11).
-    number_change: dict | None = entry.get("number_change")
+    number_change: dict | None = entry.get("number_change") if is_system else None
 
     # Recover media info and re-derive cas_rel from stored sha256 (roadmap:w6f).
     mime_type: str | None = None

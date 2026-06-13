@@ -79,12 +79,15 @@ def test_number_change_rendered_in_body(tmp_path: Path):  # roadmap:w11
     assert f"<!-- key_id: {NC_KEY_ID} -->" in text
 
 
-def test_number_change_manifest_entry(tmp_path: Path):  # roadmap:w11
+def test_number_change_manifest_entry(tmp_path: Path):  # roadmap:w11 roadmap:w11x
     _db, store, config = _setup(tmp_path)
     convert(store, config)
     fm = _frontmatter(_day_file(store))
     entry = next(m for m in fm["messages"] if m["key_id"] == NC_KEY_ID)
-    assert entry["status"] == "system"
+    # message_type: system is the messaging-namespaced marker (roadmap:cfd1).
+    assert entry["message_type"] == "system"
+    # status: must not be "system" — it is core-owned (iCal lifecycle enum).
+    assert entry.get("status") != "system"
     assert entry["number_change"] == {"old": OLD_JID, "new": NEW_JID}
 
 

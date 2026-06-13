@@ -25,3 +25,8 @@ executor (sonnet): owner_jid auto-detect (id:f5b7) + number-change system events
 ## 2026-06-13 14:59 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review 20260613-1450: 1 docs-only commit audited clean, 49 tests green, acted on owner REVIEW_ME decisions (w6f/D5 conditional-pattern doc, w11/cfd1 reopened as message_type rename), contract pointer v1→v2
+
+## 2026-06-13 — executor (sonnet)
+
+Worked id:cfd1 — renamed manifest field `status: system` → `message_type: system` for number-change entries. In `_render_file`, number-change entries now set `message_type: "system"` (messaging-namespaced) rather than `status: "system"` (core-owned iCal enum). `_reconstitute` now detects system events via `entry.get("message_type") == "system"` and only recovers `number_change` dict for such entries. Updated `test_number_change_manifest_entry` per ROADMAP spec: asserts `entry["message_type"] == "system"` and `entry.get("status") != "system"`. Full suite 49 passed 1 skipped, zero regressions.
+Friction: none.

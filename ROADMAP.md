@@ -69,7 +69,7 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     `_reconstitute`. Synthetic schema defined in the test file. Relates to entity
     alias linking (Phase 4) — emit nothing entity-shaped yet.
 
-- [ ] W11a-fix: rename manifest `status: system` → `message_type: system` [ROUTINE] <!-- id:cfd1 -->
+- [x] W11a-fix: rename manifest `status: system` → `message_type: system` [ROUTINE] <!-- id:cfd1 -->
   - **Why reopened**: 2026-06-13 owner review decision (frontmatter-schema mtg) on the
     W11a REVIEW_ME box. The `«number change»` rendering is accepted, but the chosen
     `status: system` manifest value collides with the core-owned iCal lifecycle `status:`
