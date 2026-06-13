@@ -9,6 +9,13 @@ Max ~10 open boxes; the reviewer prunes resolved ones each review turn.
   alternative (re-query the DB without watermark on rewrite) was rejected because it
   loses messages that exist only in older backup snapshots. Revoked entries never
   persist text. Confirm the frontmatter-duplication trade-off.
+  → RESOLVED 2026-06-13 (frontmatter-schema mtg, D5): ACCEPTED, scoped. Manifest
+  `text:` duplication is blessed ONLY because (a) the WhatsApp source is ephemeral
+  (no durable original to re-read) AND (b) the manifest is the rewrite
+  source-of-truth — document those two conditions in `plugin-spec.md` as a
+  *conditional* pattern, not a store-wide default. No new privacy exposure (text
+  already in the same .md body); ~2× message-text disk accepted. Pre-fix blanked
+  files are NOT auto-healed — a `--full-resweep` follow-up is queued (zkm id:8d67).
 
 - [ ] tests/test_rewrite_persistence.py::test_old_manifest_without_new_keys_still_loads
   (roadmap:w6f) — pre-fix day files are NOT healed: their already-blanked bodies stay
@@ -24,6 +31,11 @@ Max ~10 open boxes; the reviewer prunes resolved ones each review turn.
   — rendering chosen: `«number change: <old_jid> → <new_jid>»` guillemet sentinel
   (matching `«deleted»`) with manifest `status: system` + `number_change: {old, new}`.
   No entity/alias emission yet (Phase 4). Confirm format + the new `system` status value.
+  → RESOLVED 2026-06-13 (frontmatter-schema mtg, zkm id:cfd1): `«number change»`
+  rendering is fine. CHANGE: `status: system` is a different concept from
+  calendar's lifecycle `status:` — move it OUT of `status:` to a messaging field
+  `message_type: system` (reconcile with `messaging-spec.md`). `status:` stays
+  core-owned for the iCal lifecycle enum only.
 
 - [ ] tests/test_keysource.py::test_keyring_scheme_calls_secret_tool (roadmap:w-key)
   — `keyring:<service>:<account>` maps to `secret-tool lookup service <service>
