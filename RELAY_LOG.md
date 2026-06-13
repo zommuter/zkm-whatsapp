@@ -21,3 +21,7 @@ Friction: none.
 ## 2026-06-13 10:02 — executor (sonnet, relay-loop)
 
 executor (sonnet): owner_jid auto-detect (id:f5b7) + number-change system events (id:w11) — 8 new spec tests pass, full suite 49 passed 1 skipped
+
+## 2026-06-13 14:59 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review 20260613-1450: 1 docs-only commit audited clean, 49 tests green, acted on owner REVIEW_ME decisions (w6f/D5 conditional-pattern doc, w11/cfd1 reopened as message_type rename), contract pointer v1→v2
