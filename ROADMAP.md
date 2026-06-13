@@ -69,6 +69,27 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     `_reconstitute`. Synthetic schema defined in the test file. Relates to entity
     alias linking (Phase 4) — emit nothing entity-shaped yet.
 
+- [ ] W11a-fix: rename manifest `status: system` → `message_type: system` [ROUTINE] <!-- id:cfd1 -->
+  - **Why reopened**: 2026-06-13 owner review decision (frontmatter-schema mtg) on the
+    W11a REVIEW_ME box. The `«number change»` rendering is accepted, but the chosen
+    `status: system` manifest value collides with the core-owned iCal lifecycle `status:`
+    enum (calendar plugin). `status:` must stay core-owned/enum; the WhatsApp
+    system-event marker moves to a messaging-namespaced field `message_type: system`.
+  - **Acceptance**: in `convert.py:_render_file`, number-change entries write
+    `message_type: "system"` instead of `status: "system"` (non-system messages keep
+    `status: sent`/`revoked` unchanged); `_reconstitute` reads `message_type` to rebuild
+    the line; the `«number change: <old> → <new>»` body rendering is byte-identical to
+    today. Update `tests/test_number_change.py::test_number_change_manifest_entry`
+    (currently asserts `entry["status"] == "system"`) to assert
+    `entry["message_type"] == "system"` and that `status` is not `"system"`.
+  - **Tests**: `tests/test_number_change.py` (modify the manifest-entry assertion; the
+    other three w11 tests stay green) — `# roadmap:w11x`
+  - **Done-check**: `uv run pytest tests/test_number_change.py`
+  - **Context**: central-ledger counterpart is `~/src/zkm/TODO.md` id:cfd1 (the
+    cross-plugin D2/D3 schema-namespacing item, which also reconciles
+    `messaging-spec.md`). This roadmap item is the zkm-whatsapp slice only; the
+    `messaging-spec.md` reconciliation lives in the zkm core repo under id:cfd1.
+
 - [x] W-key: resolve WhatsApp backup key from Bitwarden CLI or OS keyring [HARD — strong model] <!-- id:w-key -->
   - **Done**: 2026-06-12 relay handoff C5 — `keysource.py` + pilot `--key-source` +
     `plugin.yaml` `backup_key_source`; 12 hermetic tests in `tests/test_keysource.py`

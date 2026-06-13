@@ -56,15 +56,15 @@ Output is `chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md`.
 limits the query. Deleting the state file is safe; multi-source ingest (daily backup
 snapshots) works by pointing `source_db` at each decrypted snapshot oldest-first.
 
-## Day-file rewrite + manifest reconstitution (known v1 flaw → id:w6f)
+## Day-file rewrite + manifest reconstitution (v1 flaw FIXED → id:w6f)
 
 When new same-day messages arrive, the whole day file is re-rendered: existing messages
 are reconstituted from the `messages:` manifest and merged with new rows. The v1
-manifest stores only `key_id/timestamp/sender_jid/status`, so a rewrite **blanks text
+manifest stored only `key_id/timestamp/sender_jid/status`, so a rewrite **blanked text
 bodies, reply prefixes and media lines** of prior messages (verified 2026-06-12 —
-broader than the original media-only observation).
+broader than the original media-only observation). Fixed in the w6f turn.
 
-- **Fix direction (chosen)**: persist `text`, `quoted_key_id` and `media: {mime, sha256}`
+- **Fix (shipped)**: persist `text`, `quoted_key_id` and `media: {mime, sha256}`
   in manifest entries so reconstitution is lossless and the file is self-contained.
   The CAS path is derivable from sha256 (`originals/_objects/<sha[:2]>/<sha[2:]>`).
 - **Rejected**: re-querying the DB without watermark for affected days (loses messages
@@ -72,6 +72,23 @@ broader than the original media-only observation).
   parsing body lines back (fragile round-trip through rendered markdown).
 - Backward compat: `_load_existing_manifest` must keep reading old manifests without
   the new keys (their bodies stay blank — healing old files is out of scope).
+- **Manifest `text:` duplication is a *conditional* pattern, not a store-wide default**
+  (owner decision 2026-06-13, frontmatter-schema mtg D5): blessed here ONLY because
+  (a) the WhatsApp source is ephemeral — no durable original to re-read — AND (b) the
+  manifest is the rewrite source-of-truth. ~2× message-text disk is accepted; no new
+  privacy exposure (text already lives in the same `.md` body). Pre-fix blanked files
+  are NOT auto-healed; a watermark-less `--full-resweep` heal is queued centrally as
+  `~/src/zkm/TODO.md` id:8d67. The conditional-pattern write-up belongs in core
+  `plugin-spec.md` (tracked there).
+
+## Manifest `status:` vs `message_type:` (id:cfd1, owner decision 2026-06-13)
+
+`status:` is **core-owned** — reserved for the iCal lifecycle enum used by zkm-calendar.
+The W11a number-change feature currently writes `status: system`, which collides with
+that enum. Per the frontmatter-schema meeting, the WhatsApp system-event marker moves to
+a messaging-namespaced field `message_type: system` (the `«number change»` body rendering
+is unchanged). Open ROADMAP item id:cfd1 mirrors central `~/src/zkm/TODO.md` id:cfd1
+(cross-plugin D2/D3 namespacing + `messaging-spec.md` reconciliation).
 
 ## Media: CAS + inbox symlink + sidecar (W6)
 
