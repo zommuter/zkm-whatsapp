@@ -109,6 +109,16 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Done-check**: `uv run pytest tests/test_keysource.py`
 
 - [ ] W10: auto-decryption trigger from Syncthing inbox [HARD — strong model] <!-- id:d058 -->
+  - **Status 2026-06-15**: BUILT (commit 718f10b) — `scripts/systemd/`
+    `zkm-whatsapp-decrypt.{sh,service,path}` + README serve as the design note and
+    install artifacts: `.path` unit watches the synced backup dir, oneshot wrapper
+    decrypts via `wa_decrypt_pilot.py --key-source keyring:…` → atomic-rename into
+    `source_db` → `zkm convert whatsapp --no-amenders`; idempotency via a
+    newer-than guard, `flock`'d, failures surface in the journal (oneshot, no retry
+    loop). Held OPEN: per the gate this `[HARD]` item needs (1) the human to review
+    the unit files before install and (2) the `@manual` end-to-end journey actually
+    run on real Syncthing+systemd state — a `@manual` scenario is NOT a green pass
+    (review §2.6). Tick only after the human confirms the live journey.
   - **Why HARD**: machine state (systemd `.path` unit or inotify hook on zomni),
     secret access at trigger time (depends on id:w-key, now available), and a
     checksum gate to avoid re-decrypting unchanged `.crypt15` files — not
