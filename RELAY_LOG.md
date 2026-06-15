@@ -42,3 +42,7 @@ review 20260613-2304: 1 commit audited clean (REVIEW_ME triage), 49 tests green,
 ## 2026-06-15 11:04 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review 20260615-1104: 3 commits since fable-ckpt-20260613-2317 audited — 2 REVIEW_ME triage + 1 feat (systemd --user auto-decrypt units, id:d058 W10). No test files added/deleted/modified in window → test-integrity audit clean by construction; full suite 49 passed 1 skipped (pre-existing WAL env skip, not a gate). W10 BUILT (scripts/systemd/zkm-whatsapp-decrypt.{sh,service,path}+README: .path watcher → idempotent flock'd decrypt via --key-source keyring → zkm convert --no-amenders; journal-visible, no retry loop) but HELD OPEN: [HARD]+@manual-only journey is not a green pass (review §2.6) — needs human unit review + live Syncthing/systemd run; re-scoped d058 with Status note, relabelled features/manual.feature scenario, new REVIEW_ME d058 box. Spec-drift: added Automated-ingestion section to README (systemd units were undocumented). Refreshed stale CLAUDE.md relay-contract pointer v2→v3 (fables-executor→/relay executor). No §5b additions (TODO/ROADMAP unchanged in window). 0 open [ROUTINE]; 3 open [HARD] (d058 built-pending-verify, 367f, bf12).
+
+## 2026-06-15 11:22 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review 20260615-1104: 3 commits audited clean (test-integrity trivially clean, 49 pass/1 env-skip); W10/d058 built but held @manual-pending; pointer v2→v3; README systemd doc
