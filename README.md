@@ -33,3 +33,10 @@ zkm convert whatsapp
 ```
 
 Produces `chat/whatsapp/<thread_id>/YYYY-MM-DD.md` files — one per chat per day.
+
+## Automated ingestion (optional)
+
+To decrypt + convert automatically whenever a synced backup folder changes, see
+`scripts/systemd/README.md` — a `systemd --user` `.path` unit watches the backup folder
+and runs an idempotent, `flock`'d decrypt → `zkm convert whatsapp` wrapper (key resolved
+from the OS keyring via `--key-source keyring:<service>:<account>`).
