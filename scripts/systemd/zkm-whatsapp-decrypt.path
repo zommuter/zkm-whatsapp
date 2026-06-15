@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch the synced WhatsApp backup folder; decrypt + convert on change
+
+[Path]
+# Watch the directory (not the file): sync tools typically replace the backup via an
+# atomic rename-in, which modifies the directory. The triggered service is idempotent
+# (decrypts only when the backup is newer than the inbox db), so fires for other files
+# in the folder are cheap no-ops. Edit the path to your synced backup folder.
+PathModified=%h/Sync/WhatsApp/Databases
+Unit=zkm-whatsapp-decrypt.service
+
+[Install]
+WantedBy=default.target

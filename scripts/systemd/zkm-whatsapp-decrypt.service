@@ -1,0 +1,14 @@
+[Unit]
+Description=Decrypt WhatsApp msgstore backup into the zkm inbox, then zkm convert
+Documentation=https://github.com/zommuter/zkm-whatsapp
+
+[Service]
+Type=oneshot
+# Copy zkm-whatsapp-decrypt.sh to ~/.local/bin (or point ExecStart at this repo copy).
+# Configure paths/keyring via WA_* env here or in the script's defaults.
+ExecStart=%h/.local/bin/zkm-whatsapp-decrypt.sh
+TimeoutStartSec=10min
+# Example overrides (uncomment + edit, or set defaults in the script):
+# Environment=WA_CRYPT15=%h/Sync/WhatsApp/Databases/msgstore.db.crypt15
+# Environment=WA_KEYREF=keyring:zkm/whatsapp:backup
+# Environment=ZKM_BIN=%h/.local/bin/zkm
