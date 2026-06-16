@@ -26,7 +26,10 @@ Pieces:
    install -m755 zkm-whatsapp-decrypt.sh ~/.local/bin/zkm-whatsapp-decrypt.sh
    ```
    Edit the `WA_*` defaults (backup path, `source_db`, keyring ref, store root) or set them
-   as `Environment=` lines in the `.service`.
+   as `Environment=` lines in the `.service`. **`WA_REPO` defaults to `$HOME/src/zkm-whatsapp`**
+   (standalone checkout); if the plugin lives inside the zkm monorepo
+   (e.g. `~/src/zkm/plugins/zkm-whatsapp`), you **must** override it:
+   `Environment=WA_REPO=%h/src/zkm/plugins/zkm-whatsapp`.
 
 3. **Install + enable the units**:
    ```bash
