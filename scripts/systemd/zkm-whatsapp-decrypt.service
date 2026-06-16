@@ -1,6 +1,13 @@
 [Unit]
 Description=Decrypt WhatsApp msgstore backup into the zkm inbox, then zkm convert
 Documentation=https://github.com/zommuter/zkm-whatsapp
+# A Syncthing sync delivers the daily backup + several increment/tmp files in a
+# burst, so the .path watcher fires this service many times within a second. Each
+# fire is a cheap no-op (the wrapper's flock + newer-than guard), but systemd's
+# default start-rate-limiter (5 starts / 10s) would trip and fail the .path unit,
+# silently stopping the watcher. Disable the limiter — our own guards are the
+# idempotency mechanism. Verified 2026-06-16 (W10 d058 live journey).
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
