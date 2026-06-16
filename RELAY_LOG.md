@@ -54,3 +54,7 @@ review since relay-ckpt-20260615-1122 (a33eb84 W10/d058 meeting): clean gaming-s
 ## 2026-06-16 22:02 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: audited docs-only D3 amendment (e585e93); suite green (49 pass/1 skip), no gaming, ledger consistent, 0 open ROUTINE
+
+## 2026-06-16 19:57 — reviewer (claude-opus-4-8, relay-20260616-195707-28479)
+
+review since relay-ckpt-20260616-2202 (333b9c1 close W10/d058; 8e03cf2 systemd start-limit fix). Diff window touched only docs/ledger + the `.service` unit — no Python source/test changed; gaming-scan clean; suite 49 pass/1 skip (pre-existing WAL skip, unrelated to d058). VERIFIED-GREEN id:d058 (W10 auto-decrypt): closed legitimately on a human-confirmed `@manual` live journey on zomni (4 assertions + journal evidence + a real defect caught & fixed), NOT on a skipped/unverified test — the correct path for a `[HARD]` @manual item. The `StartLimitIntervalSec=0` fix (8e03cf2) is mechanically sound (key belongs in `[Unit]`, guards are the idempotency layer). Spec-drift fixes this turn: documented the burst/start-limit rationale in `scripts/systemd/README.md` Notes, and updated the `features/manual.feature` d058 scenario title (built→VERIFIED) plus added the burst-no-op assertion. Pruned the resolved d058 REVIEW_ME box. Contract pointer already v4 (canonical). ROADMAP: 2 open items, both genuinely `[HARD]`+gated (367f segmentation design, bf12 new-number heuristic) — 0 open ROUTINE; TODO id:a006 stub count (2) consistent. No reverse-handoff items added this window. routine_open=0.

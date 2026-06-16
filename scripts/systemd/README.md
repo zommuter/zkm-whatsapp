@@ -50,6 +50,13 @@ Pieces:
   Service (the same precondition as any `--user` job using `secret-tool`).
 - **`PATH`** under `systemd --user` is minimal; set `ZKM_BIN` to an absolute path (e.g.
   `~/.local/bin/zkm`) if `zkm` isn't found.
+- **Start-rate limiter disabled (`StartLimitIntervalSec=0`).** A Syncthing sync delivers
+  the daily backup plus several increment/tmp files in a burst, so the `.path` watcher
+  fires the service many times within a second. Each fire is a cheap no-op (the wrapper's
+  `flock` + newer-than guard), but systemd's default limiter (5 starts / 10s) would
+  otherwise trip and fail the `.path` unit, silently stopping the watcher. The wrapper's
+  own guards are the idempotency mechanism, so the limiter is disabled in the `.service`.
+  (Found + fixed in the W10 live journey, 2026-06-16.)
 - **Backstop:** if you prefer time-based to event-based (or as a safety net), add a
   `.timer` with `OnCalendar=daily` + `Persistent=true` pointing at the same `.service` —
   the wrapper's newer-than guard makes redundant ticks no-ops.
