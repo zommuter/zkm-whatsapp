@@ -35,3 +35,13 @@
 ## Action items
 - [ ] W10 live verification — human runs install + 4-assertion live journey on zomni (Syncthing + `systemd --user`); tick REVIEW_ME box + ROADMAP id:d058 only on pass. Contract: `features/manual.feature` "Auto-decryption trigger" assertions hold. (id:d058 — already tracked in ROADMAP; not a new TODO line.) <!-- id:d058 -->
 - [ ] Open "unified fetch/schedule orchestrator (`zkm fetch`)" design item in core (`~/src/zkm/TODO.md`) — routed from this meeting. <!-- id:12fc -->
+
+## Amendment (post-meeting, Opus) — where decryption lives
+
+User asked whether systemd still makes sense given D3, or whether `zkm convert whatsapp --decrypt` or a general core `zkm decrypt` would be more adequate. Resolution (sharpens D3, does not overturn it):
+
+- **systemd stays — but only as the trigger.** Nothing replaces a filesystem watch; a CLI verb can't notice a synced file landing. Post-`zkm fetch`, the watch unit's target flips from the bespoke `zkm-whatsapp-decrypt.sh` to `ExecStart=zkm fetch whatsapp`. The watch unit is permanent; the wrapper is the throwaway prototype.
+- **`zkm convert whatsapp --decrypt` — rejected.** Violates the ingest-only fetch boundary (CLAUDE.md:5–7). `convert()` is hermetic + dep-light; decryption needs `wa-crypt-tools` + key resolution + secret access, none of which belong in convert's surface or test suite.
+- **General core `zkm decrypt` — rejected as a *general* tool.** crypt15 shares zero mechanism with PGP/age/etc.; no N=2 second consumer of a shared decrypt primitive. But the instinct (a CLI verb owns this, not a loose script) is correct.
+- **Resolution — answers D3's open core-vs-plugin fork: BOTH.** Core owns the `fetch` verb + orchestration + config; each **plugin contributes its fetch recipe**. `zkm fetch whatsapp` → (plugin recipe: locate crypt15 → decrypt via `wa_decrypt_pilot` → land at `source_db`) → core optionally chains `zkm convert whatsapp`. Same pattern: `zkm fetch eml` runs mbsync, `zkm fetch vcard` runs vdirsyncer. The D3 design item should adopt this contributor pattern as its starting shape.
+- **W10 disposition (D2) unchanged:** install + live-verify the bespoke wrapper now (freshness today); the `@manual` journey re-runs cheaply when `zkm fetch whatsapp` lands and the systemd target flips. The wrapper is explicitly the prototype of the whatsapp fetch recipe.
