@@ -46,3 +46,7 @@ review 20260615-1104: 3 commits since fable-ckpt-20260613-2317 audited — 2 REV
 ## 2026-06-15 11:22 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review 20260615-1104: 3 commits audited clean (test-integrity trivially clean, 49 pass/1 env-skip); W10/d058 built but held @manual-pending; pointer v2→v3; README systemd doc
+
+## 2026-06-16 21:31 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review since relay-ckpt-20260615-1122 (a33eb84 W10/d058 meeting): clean gaming-scan, 49 pass/1 skip; refreshed contract pointer v3→v4, documented WA_REPO override; 0 open ROUTINE
