@@ -50,3 +50,7 @@ review 20260615-1104: 3 commits audited clean (test-integrity trivially clean, 4
 ## 2026-06-16 21:31 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review since relay-ckpt-20260615-1122 (a33eb84 W10/d058 meeting): clean gaming-scan, 49 pass/1 skip; refreshed contract pointer v3→v4, documented WA_REPO override; 0 open ROUTINE
+
+## 2026-06-16 22:02 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: audited docs-only D3 amendment (e585e93); suite green (49 pass/1 skip), no gaming, ledger consistent, 0 open ROUTINE
