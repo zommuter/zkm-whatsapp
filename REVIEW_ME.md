@@ -3,12 +3,10 @@
 Judgment calls encoded in red tests — confirm or correct the interpretation.
 Max ~10 open boxes; the reviewer prunes resolved ones each review turn.
 
-- [ ] W10 auto-decrypt units — live verification (roadmap:d058)
-  — `scripts/systemd/zkm-whatsapp-decrypt.{sh,service,path}` are BUILT (commit 718f10b)
-  but unverified on real machine state. Before relying on them: (1) review the three unit
-  files + wrapper, then install per `scripts/systemd/README.md`; (2) run the `@manual`
-  journey in `features/manual.feature` "Auto-decryption trigger" — a fresh crypt15 lands,
-  decrypt + `zkm convert whatsapp` run exactly once, an unchanged crypt15 is a no-op, and a
-  failed decryption surfaces in `journalctl --user` without a retry loop. Tick this and
-  ROADMAP id:d058 only after the live journey passes. (A `@manual` scenario is not a green
-  test, so the relay holds d058 open until you confirm.)
+- [x] W10 auto-decrypt units — live verification (roadmap:d058) — CONFIRMED 2026-06-16
+  — Live `@manual` journey run on zomni. All 4 assertions pass (fresh→decrypt+convert once
+  [71 files]; unchanged→no-op; bad key→exit 1, journal, no loop; original untouched).
+  Live run caught + fixed a real defect: the `.path` watcher died on the first Syncthing
+  burst (`start-limit-hit`); fixed with `StartLimitIntervalSec=0` (commit 8e03cf2),
+  burst-tested. Decryption's long-term home is the `zkm fetch whatsapp` recipe (meeting
+  note 2026-06-16-2055); this wrapper is the verified prototype.

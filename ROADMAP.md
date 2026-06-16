@@ -108,17 +108,26 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     Hermetic tests via fake `bw`/`secret-tool` executables on PATH — no real secrets.
   - **Done-check**: `uv run pytest tests/test_keysource.py`
 
-- [ ] W10: auto-decryption trigger from Syncthing inbox [HARD — strong model] <!-- id:d058 -->
+- [x] W10: auto-decryption trigger from Syncthing inbox [HARD — strong model] <!-- id:d058 -->
   - **Status 2026-06-15**: BUILT (commit 718f10b) — `scripts/systemd/`
     `zkm-whatsapp-decrypt.{sh,service,path}` + README serve as the design note and
     install artifacts: `.path` unit watches the synced backup dir, oneshot wrapper
     decrypts via `wa_decrypt_pilot.py --key-source keyring:…` → atomic-rename into
     `source_db` → `zkm convert whatsapp --no-amenders`; idempotency via a
     newer-than guard, `flock`'d, failures surface in the journal (oneshot, no retry
-    loop). Held OPEN: per the gate this `[HARD]` item needs (1) the human to review
-    the unit files before install and (2) the `@manual` end-to-end journey actually
-    run on real Syncthing+systemd state — a `@manual` scenario is NOT a green pass
-    (review §2.6). Tick only after the human confirms the live journey.
+    loop).
+  - **CLOSED 2026-06-16**: live `@manual` journey run on zomni (Syncthing +
+    `systemd --user`). All 4 assertions verified: (1) fresh crypt15 → decrypt +
+    `zkm convert whatsapp` once (real run, 71 files); (2) unchanged db → no-op;
+    (3) bad key → exit 1, journal, no loop, nothing partial written; (4) original
+    crypt15 untouched. Trigger-fires-on-real-delivery proven from the 06:33 journal.
+    Live journey ALSO caught a real defect: the `.path` watcher died on the first
+    Syncthing burst (`start-limit-hit` — 5 no-op fires/sec tripped systemd's default
+    rate-limiter), silently stopping the watcher. Fixed: `StartLimitIntervalSec=0`
+    on the `.service` (safe — flock + newer-than guard are the idempotency mechanism;
+    commit 8e03cf2), burst-tested (8 rapid starts, watcher stays active, zero
+    start-limit-hit). Decryption's long-term home is the `zkm fetch whatsapp` recipe
+    (see meeting note); this wrapper is the verified prototype until then.
   - **Why HARD**: machine state (systemd `.path` unit or inotify hook on zomni),
     secret access at trigger time (depends on id:w-key, now available), and a
     checksum gate to avoid re-decrypting unchanged `.crypt15` files — not
