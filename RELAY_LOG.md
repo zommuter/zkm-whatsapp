@@ -74,3 +74,18 @@ review since relay-ckpt-20260616-2243: 1 lockfile-only commit (uv.lock zkm 0.14�
 ## 2026-06-21 17:15 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review since relay-ckpt-20260616-2243: 1 lockfile-only commit (uv.lock zkm 0.14→0.15), gaming-scan clean, 49 pass/1 skip, no source/doc/test change, no drift; 2 open HARD-gated, 0 open ROUTINE
+
+## 2026-06-22 — reviewer (claude-opus-4-8, relay-loop)
+
+Reviewed 1 commit since relay-ckpt-20260621-1715 (4e89ebb, docs-only): meeting-note
+token alignment `<!-- id:12fc -->` → `<!-- routed:12fc -->` on the routed
+fetch-orchestrator action item so orphan-scan skips it by design (it lives in the core
+inbox, not this repo's TODO). Verified: gaming-scan clean (no DELETED_TEST/ADDED_SKIP/
+REMOVED_ASSERT); no code/test changes in window; full suite 49 passed, 1 skipped
+(pre-existing WAL-path skip, not a window pass); orphan-scan correlates clean; relay
+contract pointer at v4 (current, no drift); no TODO/ROADMAP additions to qualify (§5b).
+The 12fc token now appears only in the meeting note with the `routed:` prefix — fix is
+genuine and achieves its stated purpose. No items closed (window has no executor work);
+ROADMAP unchanged: 2 open [HARD] (id:367f W7 segmentation, id:bf12 W11b informal-number
+heuristic), 0 open [ROUTINE]. Worktree `uv run` fails on the relative editable zkm dep
+(known friction, line 9) — ran tests in the main checkout (read-only) instead.
