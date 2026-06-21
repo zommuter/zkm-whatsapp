@@ -89,3 +89,7 @@ genuine and achieves its stated purpose. No items closed (window has no executor
 ROADMAP unchanged: 2 open [HARD] (id:367f W7 segmentation, id:bf12 W11b informal-number
 heuristic), 0 open [ROUTINE]. Worktree `uv run` fails on the relative editable zkm dep
 (known friction, line 9) — ran tests in the main checkout (read-only) instead.
+
+## 2026-06-22 01:03 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+Reviewed docs-only token-alignment commit (4e89ebb); gaming-scan clean, suite green (49/1 skip), no items closed; ROADMAP unchanged (2 HARD, 0 ROUTINE)
