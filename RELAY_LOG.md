@@ -62,3 +62,11 @@ review since relay-ckpt-20260616-2202 (333b9c1 close W10/d058; 8e03cf2 systemd s
 ## 2026-06-16 22:43 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review since relay-ckpt-20260616-2202: d058 closed genuinely (human @manual live journey), start-limit fix sound, gaming-scan clean, 49 pass/1 skip; spec-drift docs fixed; 0 open ROUTINE
+
+## 2026-06-21 16:26 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review since relay-ckpt-20260616-2243 (single commit a7d80f1 "chore: sync uv.lock to zkm 0.15.0"). Diff window touched ONLY `uv.lock` — the editable parent-dep pin bumped 0.14.0→0.15.0; no Python source, test, doc, or BDD change. gaming-scan clean (no DELETED_TEST/ADDED_SKIP/REMOVED_ASSERT). Suite 49 pass / 1 skip (pre-existing WAL-checkpoint env skip in test_convert.py:255, unrelated to this window) — run in the real checkout because the worktree's `../../` editable zkm path can't resolve outside the repo tree (known worktree artifact, same friction noted by past executors). No spec drift: README/ARCHITECTURE/CLAUDE unaffected by a lockfile-only change; contract pointer already v4 (canonical). No reverse-handoff items added this window (only commit is the chore). ROADMAP unchanged: 2 open items, both genuinely `[HARD — strong model]` + explicitly gated (367f segmentation design note — gated on v1-live + retrieval pain; bf12 new-number heuristic — gated on w11 shipped + a real missed case + Phase-4 alias design). 0 open ROUTINE; TODO id:a006 stub count (2 open HARD, gated) consistent. routine_open=0. Nothing to verify-green this window (no item state changed); no flags, no reopens.
+
+## 2026-06-21 16:26 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review since relay-ckpt-20260616-2243: 1 lockfile-only commit (uv.lock zkm 0.14→0.15), gaming-scan clean, 49 pass/1 skip, no source/doc/test change, no drift; 2 open HARD-gated items, 0 open ROUTINE
