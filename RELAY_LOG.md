@@ -70,3 +70,7 @@ review since relay-ckpt-20260616-2243 (single commit a7d80f1 "chore: sync uv.loc
 ## 2026-06-21 16:26 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review since relay-ckpt-20260616-2243: 1 lockfile-only commit (uv.lock zkm 0.14→0.15), gaming-scan clean, 49 pass/1 skip, no source/doc/test change, no drift; 2 open HARD-gated items, 0 open ROUTINE
+
+## 2026-06-21 17:15 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review since relay-ckpt-20260616-2243: 1 lockfile-only commit (uv.lock zkm 0.14→0.15), gaming-scan clean, 49 pass/1 skip, no source/doc/test change, no drift; 2 open HARD-gated, 0 open ROUTINE
