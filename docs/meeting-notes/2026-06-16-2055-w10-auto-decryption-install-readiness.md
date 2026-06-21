@@ -34,7 +34,7 @@
 
 ## Action items
 - [ ] W10 live verification — human runs install + 4-assertion live journey on zomni (Syncthing + `systemd --user`); tick REVIEW_ME box + ROADMAP id:d058 only on pass. Contract: `features/manual.feature` "Auto-decryption trigger" assertions hold. (id:d058 — already tracked in ROADMAP; not a new TODO line.) <!-- id:d058 -->
-- [ ] Open "unified fetch/schedule orchestrator (`zkm fetch`)" design item in core (`~/src/zkm/TODO.md`) — routed from this meeting. <!-- id:12fc -->
+- [ ] Open "unified fetch/schedule orchestrator (`zkm fetch`)" design item in core (`~/src/zkm/TODO.md`) — routed from this meeting. <!-- routed:12fc -->
 
 ## Amendment (post-meeting, Opus) — where decryption lives
 
