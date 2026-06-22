@@ -112,3 +112,7 @@ No items closed; ROADMAP unchanged in count: 2 open [HARD — meeting], 0 open [
 ## 2026-06-22 16:27 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review since relay-ckpt-20260622-0103: 1 ROADMAP-only commit (id:78ff HARD lane-tag migration to [HARD — meeting]), gaming-scan clean, no code/test change, contract pointer v4 current; 2 open [HARD — meeting], 0 open [ROUTINE]
+
+## 2026-06-22 21:26 — maintenance (manual, uv.lock cascade)
+
+uv.lock cascade refresh to zkm 0.16.0 — mechanical version-pin only (id:bae5), audit-exempt class (no code/spec change).
