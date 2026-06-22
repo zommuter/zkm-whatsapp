@@ -108,3 +108,7 @@ REMOVED_ASSERT); no code/test change in window; no formerly-red→green transiti
 audit; relay contract pointer at v4 (current); §5b reverse-handoff — the two `+- [ ]`
 lines are retags of pre-existing ids, not new unqualified work, so nothing to qualify.
 No items closed; ROADMAP unchanged in count: 2 open [HARD — meeting], 0 open [ROUTINE].
+
+## 2026-06-22 16:27 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review since relay-ckpt-20260622-0103: 1 ROADMAP-only commit (id:78ff HARD lane-tag migration to [HARD — meeting]), gaming-scan clean, no code/test change, contract pointer v4 current; 2 open [HARD — meeting], 0 open [ROUTINE]
