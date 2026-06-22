@@ -93,3 +93,18 @@ heuristic), 0 open [ROUTINE]. Worktree `uv run` fails on the relative editable z
 ## 2026-06-22 01:03 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 Reviewed docs-only token-alignment commit (4e89ebb); gaming-scan clean, suite green (49/1 skip), no items closed; ROADMAP unchanged (2 HARD, 0 ROUTINE)
+
+## 2026-06-22 16:01 — reviewer (claude-opus-4-8, relay-loop)
+
+Reviewed 1 commit since relay-ckpt-20260622-0103 (4d4c045, ROADMAP-only): the id:78ff
+[HARD] explicit-lane-tag migration. Both open HARD items retagged `[HARD — strong model]`
+→ `[HARD — meeting]` (id:367f W7 segmentation design-note; id:bf12 W11b informal
+new-number heuristic) — both correct meeting-lane classifications (367f is design-only
+and gated on v1+retrieval-pain; bf12 needs a non-existent human-confirmation flow +
+multi-language false-positive judgment, gated on id:w11). The two already-closed [x] HARD
+items keep their historical `[HARD — strong model]` tags (correct — completed under the
+old scheme, never rewritten). Verified: gaming-scan clean (no DELETED_TEST/ADDED_SKIP/
+REMOVED_ASSERT); no code/test change in window; no formerly-red→green transitions to
+audit; relay contract pointer at v4 (current); §5b reverse-handoff — the two `+- [ ]`
+lines are retags of pre-existing ids, not new unqualified work, so nothing to qualify.
+No items closed; ROADMAP unchanged in count: 2 open [HARD — meeting], 0 open [ROUTINE].
