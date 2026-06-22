@@ -139,14 +139,14 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     crypt15 (checksum match) is a no-op; failures surface visibly (journal), never
     loop. Manual journey: `features/manual.feature` "Auto-decryption trigger".
 
-- [ ] W7: smarter segmentation design note [HARD — strong model] <!-- id:367f -->
+- [ ] W7: smarter segmentation design note [HARD — meeting] <!-- id:367f -->
   - **Why HARD**: design-only, explicitly GATED — do not start until v1 is live AND
     concrete retrieval pain from day-boundaries exists. Burst/temporal-density or
     per-thread re-segmentation must be additive and MUST NOT rewrite chat-level
     `thread_id`. See `~/src/zkm/docs/meeting-notes/2026-06-03-0952-zkm-whatsapp-scope.md`.
   - **Acceptance**: a design note (docs/), no code.
 
-- [ ] W11b: heuristic detection of informal "new number" messages [HARD — strong model] <!-- id:bf12 -->
+- [ ] W11b: heuristic detection of informal "new number" messages [HARD — meeting] <!-- id:bf12 -->
   - **Why HARD**: multi-language pattern judgment, false-positive cost, and a
     human-confirmation flow that does not exist yet; depends on id:w11 landing and on
     the Phase 4 entity alias/synonym design. Gate: id:w11 shipped + at least one real
