@@ -108,8 +108,38 @@ def test_reprocess_is_idempotent(tmp_path: Path) -> None:
     assert reprocess(store, cfg, [day]) == []  # second: already ingested → no rewrite
 
 
-def test_reprocess_without_media_root_is_noop(tmp_path: Path) -> None:
+def test_reprocess_without_media_root_heals_but_no_cas(tmp_path: Path) -> None:
+    """Without media_root the manifest heal still runs; only CAS bytes are skipped."""
     store, db, _ = _build(tmp_path)
     convert(store, _cfg(db))
     day = _day_file(store)
-    assert reprocess(store, _cfg(db), [day]) == []  # needs media_root → does nothing
+    reprocess(store, _cfg(db), [day])  # no media_root
+    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    cas = [p for p in objects.rglob("*") if p.is_file()] if objects.exists() else []
+    assert cas == []  # no bytes stored without media_root
+    # …but the media KIND is preserved in the manifest (renders [media: <mime>]).
+    entry = next(m for m in _manifest(day)["messages"] if m["key_id"] == MEDIA_KEY_ID)
+    assert entry["media"]["mime"] == MEDIA_MIME
+    assert "sha256" not in entry["media"]
+
+
+def test_reprocess_heals_missing_manifest_text(tmp_path: Path) -> None:
+    """A pre-w6f (0.2.0) manifest without text: is healed from the DB by key_id."""
+    store, db, media_root = _build(tmp_path)
+    convert(store, _cfg(db))
+    day = _day_file(store)
+
+    # Simulate a 0.2.0 file: drop text: from every manifest entry (text lives only in body).
+    raw = day.read_text()
+    _, fm_text, body = raw.split("---\n", 2)
+    fm = yaml.safe_load(fm_text)
+    for m in fm["messages"]:
+        m.pop("text", None)
+    day.write_text("---\n" + yaml.dump(fm, allow_unicode=True, sort_keys=False) + "---\n" + body)
+    assert all("text" not in m for m in _manifest(day)["messages"])
+
+    changed = reprocess(store, _cfg(db, media_root=str(media_root)), [day])
+    assert changed == [day]
+    healed = {m["key_id"]: m for m in _manifest(day)["messages"]}
+    assert healed["AABBCC001"]["text"] == "Hello there"  # restored from DB
+    assert healed["AABBCC004"]["quoted_key_id"] == "AABBCC001"  # reply linkage intact

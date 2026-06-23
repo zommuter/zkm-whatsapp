@@ -47,7 +47,7 @@ from state import load_state, save_state
 log = logging.getLogger(__name__)
 
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.5.0"
+PLUGIN_VERSION = "0.6.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -493,19 +493,60 @@ def convert(
     return written
 
 
-# ── Media backfill (reprocess) ─────────────────────────────────────────────────────
+# ── Manifest heal + media backfill (reprocess) ─────────────────────────────────────
 
-def _media_map_by_key_id(con: sqlite3.Connection) -> dict[str, tuple[str | None, str]]:
-    """Return {key_id: (mime_type, file_path)} for every media row with a file_path."""
-    if not _table_exists(con, "message_media"):
-        return {}
-    rows = con.execute("""
-        SELECT m.key_id, mm.mime_type, mm.file_path
+def _heal_meta_by_key_id(con: sqlite3.Connection) -> dict[str, dict]:
+    """Return {key_id: {text_data, quoted_key_id, mime_type, file_path, number_change}}.
+
+    Re-derives — straight from the DB — every field ``_reconstitute`` needs to rebuild
+    a message losslessly. Used to heal pre-w6f (0.2.0) day-files whose manifests stored
+    only key_id/sender/status/timestamp, so a merge-triggered rewrite no longer blanks
+    text/replies/media/system lines.
+    """
+    has_quoted = _table_exists(con, "message_quoted")
+    has_media = _table_exists(con, "message_media")
+    has_nc = _table_exists(con, "message_system_number_change")
+    jid_map = _build_jid_map(con) if has_nc else {}
+
+    quoted_col = "mq.key_id AS quoted_key_id" if has_quoted else "NULL AS quoted_key_id"
+    quoted_join = "LEFT JOIN message_quoted mq ON mq.message_row_id = m._id" if has_quoted else ""
+    media_cols = (
+        "mm.mime_type, mm.file_path AS media_path" if has_media
+        else "NULL AS mime_type, NULL AS media_path"
+    )
+    media_join = "LEFT JOIN message_media mm ON mm.message_row_id = m._id" if has_media else ""
+    nc_cols = (
+        "nc.old_jid_row_id AS nc_old, nc.new_jid_row_id AS nc_new" if has_nc
+        else "NULL AS nc_old, NULL AS nc_new"
+    )
+    nc_join = (
+        "LEFT JOIN message_system_number_change nc ON nc.message_row_id = m._id" if has_nc else ""
+    )
+    rows = con.execute(f"""
+        SELECT m.key_id, m.text_data, {quoted_col}, {media_cols}, {nc_cols}
         FROM message m
-        JOIN message_media mm ON mm.message_row_id = m._id
-        WHERE mm.file_path IS NOT NULL
+        {quoted_join}
+        {media_join}
+        {nc_join}
     """).fetchall()
-    return {r[0]: (r[1], r[2]) for r in rows if r[0]}
+
+    meta: dict[str, dict] = {}
+    for r in rows:
+        if not r["key_id"]:
+            continue
+        number_change = None
+        if r["nc_old"] is not None and r["nc_new"] is not None:
+            old_jid, new_jid = jid_map.get(r["nc_old"]), jid_map.get(r["nc_new"])
+            if old_jid and new_jid:
+                number_change = {"old": old_jid, "new": new_jid}
+        meta[r["key_id"]] = {
+            "text_data": r["text_data"],
+            "quoted_key_id": r["quoted_key_id"],
+            "mime_type": r["mime_type"],
+            "file_path": r["media_path"],
+            "number_change": number_change,
+        }
+    return meta
 
 
 def _patch_media_body_line(body: str, key_id: str, mime: str | None, cas_rel: str) -> str:
@@ -523,19 +564,20 @@ def _patch_media_body_line(body: str, key_id: str, mime: str | None, cas_rel: st
     return "\n".join(out)
 
 
-def _reingest_media_in_file(
+def _heal_day_file(
     md: Path,
     store_path: Path,
-    media_map: dict[str, tuple[str | None, str]],
+    meta_map: dict[str, dict],
     media_root: Path | None,
     inbox_index: dict[str, Path],
 ) -> bool:
-    """Surgically backfill media for one existing day-file. Returns True if changed.
+    """Make one day-file's manifest lossless + CAS its media. Returns True if changed.
 
-    Non-destructive: only the manifest ``media:`` entry and the matching ``[media: …]``
-    body line are touched — message text and all other content are preserved (so this
-    is safe on pre-w6f files that don't persist text in the manifest). Idempotent:
-    messages already carrying ``media.sha256`` are skipped.
+    Surgical and non-destructive: it only ADDS missing manifest fields (text,
+    quoted_key_id, media, message_type/number_change — sourced from the DB) and rewrites
+    media body lines to the CAS form. Message text in the body and every other line stay
+    byte-for-byte. Idempotent: nothing to add → no rewrite. After healing, a
+    merge-triggered rewrite reconstitutes losslessly.
     """
     text = md.read_text(encoding="utf-8")
     if not text.startswith("---"):
@@ -544,7 +586,7 @@ def _reingest_media_in_file(
     if end == -1:
         return False
     fm = yaml.safe_load(text[4:end]) or {}
-    body_after = text[end + 5:]  # "\n" + body + "\n" — preserved verbatim except media lines
+    body_after = text[end + 5:]  # "\n" + body + "\n" — preserved except media lines
 
     chat_jid = fm.get("chat_jid")
     tid = fm.get("thread_id")
@@ -554,21 +596,47 @@ def _reingest_media_in_file(
     changed = False
     for entry in fm.get("messages", []):
         kid = entry.get("key_id")
-        if not kid or kid not in media_map:
+        meta = meta_map.get(kid) if kid else None
+        if meta is None:
             continue
-        if (entry.get("media") or {}).get("sha256"):
-            continue  # already ingested
-        mime, file_path = media_map[kid]
-        msg = {"key_id": kid, "media_path": file_path, "mime_type": mime}
-        if not _handle_media(msg, store_path, tid, md, chat_jid, inbox_index, media_root):
-            continue  # file unresolved / store failed (already logged)
-        cas_rel = msg["cas_rel"]
-        entry["media"] = {
-            "mime": mime or "application/octet-stream",
-            "sha256": _sha256_from_cas_rel(cas_rel),
-        }
-        body_after = _patch_media_body_line(body_after, kid, mime, cas_rel)
-        changed = True
+
+        # System / number-change event — persist so reconstitution rebuilds the line.
+        if meta["number_change"] and entry.get("message_type") != "system":
+            entry["message_type"] = "system"
+            entry["number_change"] = meta["number_change"]
+            changed = True
+            continue
+        if entry.get("status") == "revoked" or entry.get("message_type") == "system":
+            continue  # revoked/system carry no text or media
+
+        # Reply linkage.
+        if meta["quoted_key_id"] and not entry.get("quoted_key_id"):
+            entry["quoted_key_id"] = meta["quoted_key_id"]
+            changed = True
+
+        if meta["mime_type"] or meta["file_path"]:
+            # Media message: CAS the bytes (if resolvable) and/or persist the kind.
+            if (entry.get("media") or {}).get("sha256"):
+                continue  # already fully ingested
+            mime = meta["mime_type"]
+            stored = False
+            if meta["file_path"]:
+                msg = {"key_id": kid, "media_path": meta["file_path"], "mime_type": mime}
+                if _handle_media(msg, store_path, tid, md, chat_jid, inbox_index, media_root):
+                    entry["media"] = {
+                        "mime": mime or "application/octet-stream",
+                        "sha256": _sha256_from_cas_rel(msg["cas_rel"]),
+                    }
+                    body_after = _patch_media_body_line(body_after, kid, mime, msg["cas_rel"])
+                    stored = changed = True
+            if not stored and "media" not in entry:
+                # Preserve the media kind even without bytes (renders [media: <mime>]).
+                entry["media"] = {"mime": mime or "application/octet-stream"}
+                changed = True
+        elif "text" not in entry and meta["text_data"] is not None:
+            # Plain text message — persist text so a future rewrite keeps it.
+            entry["text"] = meta["text_data"]
+            changed = True
 
     if not changed:
         return False
@@ -584,16 +652,22 @@ def reprocess(
     *,
     progress: ProgressCallback | None = None,
 ) -> list[Path]:
-    """Backfill media (incl. voice notes) into already-ingested day-files.
+    """Heal existing day-files' manifests + backfill media. Returns changed paths.
 
-    The standard convert() path only CASes media for newly-ingested messages, so
-    existing day-files written before ``media_root`` was configured keep bare
-    ``[media: <mime>]`` placeholders. This re-derives each message's media from the
-    DB by key_id and stores any not-yet-ingested file into CAS, patching the manifest
-    + body in place (watermark-independent, non-destructive, idempotent).
+    Two jobs, both watermark-independent, non-destructive and idempotent:
 
-    Triggered by ``zkm convert whatsapp --reprocess-all`` (core passes the managed
-    day-files as ``candidates``). Requires ``media_root`` to locate the media bytes.
+    1. **Manifest heal** — pre-w6f (0.2.0) day-files stored only key_id/sender/status/
+       timestamp, so a merge that rewrites a day would blank its text/replies/media.
+       This re-derives text/quoted/media/number_change from the DB by key_id and writes
+       the missing fields into the manifest (body left intact), making rewrites lossless.
+       Required before merging an additional source DB (e.g. an older phone backup).
+    2. **Media backfill** — for media messages, CAS the actual bytes (via ``media_root``)
+       and rewrite the ``[media: …]`` body line to the CAS-linked form, so amenders
+       (zkm-stt) can transcribe them. Needs ``media_root``; without it, the heal still
+       runs (text/replies) and media kind is preserved as a bare placeholder.
+
+    Triggered by ``zkm convert whatsapp --reprocess-all`` (core passes managed
+    day-files as ``candidates``).
     """
     source_db = Path(config["source_db"]).expanduser().resolve()
     media_root = (
@@ -603,30 +677,29 @@ def reprocess(
         return []
     if media_root is None:
         log.warning(
-            "whatsapp: --reprocess-all media backfill needs `media_root` set "
-            "(the WhatsApp data dir, parent of `Media/`); nothing to do."
+            "whatsapp: --reprocess-all running manifest heal only; set `media_root` "
+            "(the WhatsApp data dir, parent of `Media/`) to also CAS media bytes."
         )
-        return []
 
     db_to_open, tmpdir = _wal_safe_source(source_db)
     con = sqlite3.connect(db_to_open)
     con.row_factory = sqlite3.Row
     written: list[Path] = []
     try:
-        media_map = _media_map_by_key_id(con)
+        meta_map = _heal_meta_by_key_id(con)
         inbox_index = build_canonical_index(store_path, "inbox/whatsapp")
         total = len(candidates)
         for i, md in enumerate(candidates):
             if progress is not None:
                 progress(i, total, str(md))
-            if _reingest_media_in_file(md, store_path, media_map, media_root, inbox_index):
+            if _heal_day_file(md, store_path, meta_map, media_root, inbox_index):
                 written.append(md)
     finally:
         con.close()
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    log.info("whatsapp: media backfill stored media in %d day-file(s)", len(written))
+    log.info("whatsapp: reprocess healed/backfilled %d day-file(s)", len(written))
     return written
 
 
