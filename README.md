@@ -24,7 +24,14 @@ whatsapp:
   source_db: /path/to/decrypted/msgstore.db
   owner_jid: 41791234567@s.whatsapp.net
   timezone: Europe/Zurich    # optional, default: Europe/Zurich
+  media_root: /path/to/WhatsApp    # optional; the dir holding Media/
 ```
+
+`msgstore.db` stores media (images, voice notes, …) as paths **relative** to the
+WhatsApp data dir (e.g. `Media/WhatsApp Voice Notes/…/x.opus`). Set `media_root` to
+that dir (the parent of `Media/`) so those files resolve into CAS; without it, media
+is emitted as a bare `[media: <mime>]` placeholder with no stored bytes (and
+downstream transcription/amenders have nothing to consume).
 
 ## Usage
 
@@ -33,6 +40,19 @@ zkm convert whatsapp
 ```
 
 Produces `chat/whatsapp/<thread_id>/YYYY-MM-DD.md` files — one per chat per day.
+
+To backfill media into day-files that were ingested **before** `media_root` was set
+(they carry bare `[media: <mime>]` placeholders), run:
+
+```bash
+zkm convert whatsapp --reprocess-all
+```
+
+This is surgical and non-destructive: for each existing day-file it re-derives media
+from the DB by `key_id`, stores any not-yet-ingested file into CAS, and patches only
+the manifest `media:` entry and the matching `[media: …]` body line — message text
+and everything else are preserved byte-for-byte. Idempotent (skips messages already
+carrying `media.sha256`) and a no-op without `media_root`.
 
 ## Automated ingestion (optional)
 
