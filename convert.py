@@ -47,7 +47,7 @@ from state import load_state, save_state
 log = logging.getLogger(__name__)
 
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.4.0"
+PLUGIN_VERSION = "0.5.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -490,6 +490,143 @@ def convert(
             hint,
         )
 
+    return written
+
+
+# ── Media backfill (reprocess) ─────────────────────────────────────────────────────
+
+def _media_map_by_key_id(con: sqlite3.Connection) -> dict[str, tuple[str | None, str]]:
+    """Return {key_id: (mime_type, file_path)} for every media row with a file_path."""
+    if not _table_exists(con, "message_media"):
+        return {}
+    rows = con.execute("""
+        SELECT m.key_id, mm.mime_type, mm.file_path
+        FROM message m
+        JOIN message_media mm ON mm.message_row_id = m._id
+        WHERE mm.file_path IS NOT NULL
+    """).fetchall()
+    return {r[0]: (r[1], r[2]) for r in rows if r[0]}
+
+
+def _patch_media_body_line(body: str, key_id: str, mime: str | None, cas_rel: str) -> str:
+    """Rewrite the single body line for ``key_id`` from a bare media placeholder
+    to the CAS-linked form, leaving every other line (incl. message text) untouched."""
+    marker = f"<!-- key_id: {key_id} -->"
+    mime_txt = mime or "application/octet-stream"
+    bare = f"[media: {mime_txt}]"
+    full = f"[media: {mime_txt} → {cas_rel}]"
+    out = []
+    for line in body.split("\n"):
+        if marker in line and bare in line:
+            line = line.replace(bare, full)
+        out.append(line)
+    return "\n".join(out)
+
+
+def _reingest_media_in_file(
+    md: Path,
+    store_path: Path,
+    media_map: dict[str, tuple[str | None, str]],
+    media_root: Path | None,
+    inbox_index: dict[str, Path],
+) -> bool:
+    """Surgically backfill media for one existing day-file. Returns True if changed.
+
+    Non-destructive: only the manifest ``media:`` entry and the matching ``[media: …]``
+    body line are touched — message text and all other content are preserved (so this
+    is safe on pre-w6f files that don't persist text in the manifest). Idempotent:
+    messages already carrying ``media.sha256`` are skipped.
+    """
+    text = md.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return False
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return False
+    fm = yaml.safe_load(text[4:end]) or {}
+    body_after = text[end + 5:]  # "\n" + body + "\n" — preserved verbatim except media lines
+
+    chat_jid = fm.get("chat_jid")
+    tid = fm.get("thread_id")
+    if not chat_jid or not tid:
+        return False
+
+    changed = False
+    for entry in fm.get("messages", []):
+        kid = entry.get("key_id")
+        if not kid or kid not in media_map:
+            continue
+        if (entry.get("media") or {}).get("sha256"):
+            continue  # already ingested
+        mime, file_path = media_map[kid]
+        msg = {"key_id": kid, "media_path": file_path, "mime_type": mime}
+        if not _handle_media(msg, store_path, tid, md, chat_jid, inbox_index, media_root):
+            continue  # file unresolved / store failed (already logged)
+        cas_rel = msg["cas_rel"]
+        entry["media"] = {
+            "mime": mime or "application/octet-stream",
+            "sha256": _sha256_from_cas_rel(cas_rel),
+        }
+        body_after = _patch_media_body_line(body_after, kid, mime, cas_rel)
+        changed = True
+
+    if not changed:
+        return False
+    yaml_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    write_atomic(md, f"---\n{yaml_str}---\n{body_after}")
+    return True
+
+
+def reprocess(
+    store_path: Path,
+    config: dict,
+    candidates: list[Path],
+    *,
+    progress: ProgressCallback | None = None,
+) -> list[Path]:
+    """Backfill media (incl. voice notes) into already-ingested day-files.
+
+    The standard convert() path only CASes media for newly-ingested messages, so
+    existing day-files written before ``media_root`` was configured keep bare
+    ``[media: <mime>]`` placeholders. This re-derives each message's media from the
+    DB by key_id and stores any not-yet-ingested file into CAS, patching the manifest
+    + body in place (watermark-independent, non-destructive, idempotent).
+
+    Triggered by ``zkm convert whatsapp --reprocess-all`` (core passes the managed
+    day-files as ``candidates``). Requires ``media_root`` to locate the media bytes.
+    """
+    source_db = Path(config["source_db"]).expanduser().resolve()
+    media_root = (
+        Path(config["media_root"]).expanduser().resolve() if config.get("media_root") else None
+    )
+    if not candidates:
+        return []
+    if media_root is None:
+        log.warning(
+            "whatsapp: --reprocess-all media backfill needs `media_root` set "
+            "(the WhatsApp data dir, parent of `Media/`); nothing to do."
+        )
+        return []
+
+    db_to_open, tmpdir = _wal_safe_source(source_db)
+    con = sqlite3.connect(db_to_open)
+    con.row_factory = sqlite3.Row
+    written: list[Path] = []
+    try:
+        media_map = _media_map_by_key_id(con)
+        inbox_index = build_canonical_index(store_path, "inbox/whatsapp")
+        total = len(candidates)
+        for i, md in enumerate(candidates):
+            if progress is not None:
+                progress(i, total, str(md))
+            if _reingest_media_in_file(md, store_path, media_map, media_root, inbox_index):
+                written.append(md)
+    finally:
+        con.close()
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    log.info("whatsapp: media backfill stored media in %d day-file(s)", len(written))
     return written
 
 

@@ -11,9 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from conftest import MEDIA_BYTES, MEDIA_MIME, _create_test_db
+from conftest import MEDIA_BYTES, MEDIA_KEY_ID, MEDIA_MIME, _create_test_db
 
-from convert import _thread_id, convert
+from convert import _thread_id, convert, reprocess
 
 CHAT_JID = "41792222222@s.whatsapp.net"
 REL_MEDIA = "Media/WhatsApp Voice Notes/202504/PTT-1.opus"
@@ -75,3 +75,41 @@ def test_without_media_root_relative_path_unresolved(tmp_path: Path) -> None:
     assert cas_files == []
     # Bare placeholder in the manifest: no media dict, so amenders see nothing.
     assert all(not m.get("media") for m in _manifest(_day_file(store))["messages"])
+
+
+def test_reprocess_backfills_media_non_destructively(tmp_path: Path) -> None:
+    """--reprocess-all heals existing bare placeholders WITHOUT touching message text."""
+    store, db, media_root = _build(tmp_path)
+    convert(store, _cfg(db))  # first pass: no media_root → bare placeholder, no CAS
+    day = _day_file(store)
+    before = day.read_text()
+    assert "Hello there" in before  # a text message shares this day-file
+    assert f"[media: {MEDIA_MIME}]" in before
+
+    changed = reprocess(store, _cfg(db, media_root=str(media_root)), [day])
+    assert changed == [day]
+
+    after = day.read_text()
+    assert "Hello there" in after  # text preserved — non-destructive (no w6f blanking)
+    assert "→ chat/whatsapp/" in after  # media body line healed
+    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    cas = [p for p in objects.rglob("*") if p.is_file() and not p.name.endswith(".json")]
+    assert len(cas) == 1 and cas[0].read_bytes() == MEDIA_BYTES
+    entry = next(m for m in _manifest(day)["messages"] if m["key_id"] == MEDIA_KEY_ID)
+    assert entry["media"]["sha256"]
+
+
+def test_reprocess_is_idempotent(tmp_path: Path) -> None:
+    store, db, media_root = _build(tmp_path)
+    convert(store, _cfg(db))
+    day = _day_file(store)
+    cfg = _cfg(db, media_root=str(media_root))
+    assert reprocess(store, cfg, [day]) == [day]  # first heals
+    assert reprocess(store, cfg, [day]) == []  # second: already ingested → no rewrite
+
+
+def test_reprocess_without_media_root_is_noop(tmp_path: Path) -> None:
+    store, db, _ = _build(tmp_path)
+    convert(store, _cfg(db))
+    day = _day_file(store)
+    assert reprocess(store, _cfg(db), [day]) == []  # needs media_root → does nothing
