@@ -70,8 +70,19 @@ def main() -> None:
         raw = zlib.decompress(raw)
     except zlib.error:
         pass
+
+    # Fail loudly on a bad decrypt. wa_crypt_tools' library API can RETURN garbage
+    # (rather than raise) when the key doesn't match the file, so verify the output is
+    # actually a SQLite DB before writing — otherwise we'd write an unusable file and
+    # the failure only surfaces much later as "file is not a database". No key material
+    # is ever printed (do NOT add verbose/key logging here).
+    if not raw.startswith(b"SQLite format 3\x00"):
+        ap.exit(2, "decryption failed: output is not a SQLite database. The key most "
+                   "likely does not match this backup (wrong/rotated key epoch), or the "
+                   "file is corrupt. Nothing written.\n")
+
     args.out.write_bytes(raw)
-    print("Done")
+    print(f"Done — wrote {args.out} ({len(raw)} bytes)")
 
 
 if __name__ == "__main__":

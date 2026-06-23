@@ -47,7 +47,7 @@ from state import load_state, save_state
 log = logging.getLogger(__name__)
 
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.6.0"
+PLUGIN_VERSION = "0.7.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -330,6 +330,24 @@ def _wal_safe_source(source_db: Path) -> tuple[Path, Path | None]:
 
 # ── Main entry point ─────────────────────────────────────────────────────────────
 
+def _assert_sqlite_source(source_db: Path) -> None:
+    """Fail early + clearly if source_db isn't a decrypted SQLite DB.
+
+    Avoids the opaque ``sqlite3.DatabaseError: file is not a database`` deep in a
+    query when the user points source_db at an encrypted .crypt14/15 backup or a
+    failed decryption.
+    """
+    if not source_db.exists():
+        raise FileNotFoundError(f"whatsapp source_db not found: {source_db}")
+    with open(source_db, "rb") as f:
+        if f.read(16) != b"SQLite format 3\x00":
+            raise ValueError(
+                f"whatsapp source_db is not a SQLite database: {source_db}\n"
+                "It looks like an encrypted .crypt12/14/15 backup or a failed decryption. "
+                "Decrypt it first (fetch-role) — see docs/merge-old-backup.md."
+            )
+
+
 def convert(
     store_path: Path,
     config: dict,
@@ -337,6 +355,7 @@ def convert(
     progress: ProgressCallback | None = None,
 ) -> list[Path]:
     source_db = Path(config["source_db"]).expanduser().resolve()
+    _assert_sqlite_source(source_db)
     tz: TzInfo = ZoneInfo(config["timezone"]) if "timezone" in config else (datetime.now().astimezone().tzinfo or ZoneInfo("UTC"))
     # media_root anchors the *relative* file_path values stored in message_media
     # (e.g. "Media/WhatsApp Voice Notes/…/x.opus") to the on-disk WhatsApp media

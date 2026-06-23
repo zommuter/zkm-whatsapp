@@ -143,3 +143,17 @@ def test_reprocess_heals_missing_manifest_text(tmp_path: Path) -> None:
     healed = {m["key_id"]: m for m in _manifest(day)["messages"]}
     assert healed["AABBCC001"]["text"] == "Hello there"  # restored from DB
     assert healed["AABBCC004"]["quoted_key_id"] == "AABBCC001"  # reply linkage intact
+
+
+def test_convert_rejects_non_sqlite_source(tmp_path: Path) -> None:
+    """A non-SQLite source_db (e.g. an encrypted backup) fails with a clear error."""
+    import pytest
+
+    from convert import convert
+
+    bogus = tmp_path / "msgstore.db"
+    bogus.write_bytes(b"\x61\xba\xe7\x77not a sqlite db" * 8)  # crypt-like garbage
+    store = tmp_path / "knowledge"
+    store.mkdir()
+    with pytest.raises(ValueError, match="not a SQLite database"):
+        convert(store, {"source_db": str(bogus), "owner_jid": "x@s.whatsapp.net"})
