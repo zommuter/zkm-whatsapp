@@ -139,6 +139,40 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     crypt15 (checksum match) is a no-op; failures surface visibly (journal), never
     loop. Manual journey: `features/manual.feature` "Auto-decryption trigger".
 
+- [x] W12: media_root config — resolve relative msgstore media paths → CAS [ROUTINE] <!-- id:1c7d -->
+  - **Done**: 2026-06-23 (v0.4.0, commit d8ba5a7). msgstore.db stores media as paths
+    relative to the WhatsApp data dir; `_handle_media` checked `.exists()` against cwd so
+    relative paths never resolved → media silently skipped (bare `[media: <mime>]`, no CAS
+    bytes / no `media.{mime,sha256}` manifest), starving the stt-wa amender. New optional
+    `media_root` config anchors relative `file_path` under the on-disk `Media/` tree
+    (`_resolve_media_path`); `_handle_media` returns stored/not-found and `convert()` logs a
+    missing-media summary (no longer silent); `except Exception: pass` replaced with a logged
+    per-item warning (`exc_info`) — a real store failure is now distinct from "file absent".
+  - **Tests**: `tests/test_media_root.py::test_media_root_resolves_relative_path_to_cas`,
+    `::test_without_media_root_relative_path_unresolved` — assert real CAS object bytes +
+    manifest `media.sha256`/`mime`. GREEN, verified this review (genuine impl, no gaming).
+  - **Done-check**: `uv run pytest tests/test_media_root.py`
+  - **Context**: central-ledger counterpart `~/src/zkm/TODO.md` W12 id:1c7d. Unblocks the
+    STT chain (`zkm convert stt-wa` needs the CAS'd voice notes + manifest).
+
+- [x] W13: reprocess() media backfill for existing day-files [ROUTINE] <!-- id:4b8e -->
+  - **Done**: 2026-06-23 (v0.5.0, commit 70cf4ee). Non-destructive `reprocess()` hook
+    (`zkm convert whatsapp --reprocess-all`, candidates passed by core `run_reprocess`)
+    heals already-ingested day-files still carrying bare `[media: <mime>]` placeholders.
+    Surgical, NOT a re-render: re-derives media from the DB by `key_id`, CASes any
+    not-yet-stored file (via `media_root`), and patches ONLY the manifest `media:` entry +
+    the matching `[media: …]` body line — message text and everything else preserved
+    byte-for-byte (safe on pre-w6f files that don't persist text; a full re-render would
+    blank them). Idempotent (skips messages already carrying `media.sha256`),
+    watermark-independent, no-op+warn without `media_root`.
+  - **Tests**: `tests/test_media_root.py::test_reprocess_backfills_media_non_destructively`
+    (text preserved + media healed: manifest sha256 + body cas_rel + CAS object),
+    `::test_reprocess_is_idempotent`, `::test_reprocess_without_media_root_is_noop`. GREEN,
+    verified this review.
+  - **Done-check**: `uv run pytest tests/test_media_root.py`
+  - **Context**: central-ledger counterpart `~/src/zkm/TODO.md` W13 id:4b8e. Conforms to
+    core's `reprocess(store_path, config, existing, *, progress)` shape (conformance.py).
+
 - [ ] W7: smarter segmentation design note [HARD — meeting] <!-- id:367f -->
   - **Why HARD**: design-only, explicitly GATED — do not start until v1 is live AND
     concrete retrieval pain from day-boundaries exists. Burst/temporal-density or

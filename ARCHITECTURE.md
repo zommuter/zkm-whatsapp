@@ -100,6 +100,32 @@ sidecar lands in `inbox/whatsapp/<tid>/` via `zkm.inbox.symlink_with_sidecar`.
   (`~/src/zkm/docs/object-storage.md`); dedup across re-runs for free.
 - **Rejected**: copying media next to the day file (duplicates on rewrite, no dedup).
 
+### Path resolution: `media_root` (v0.4.0)
+
+`message_media.file_path` is stored **relative** to the WhatsApp data dir (e.g.
+`Media/WhatsApp Voice Notes/…/x.opus`), so a bare `.exists()` against cwd never
+resolved — media was silently skipped. `_resolve_media_path(raw, media_root)`: absolute
+paths used as-is; relative ones anchored under the optional `media_root` config; cwd
+fallback preserved. `_handle_media` returns a bool so `convert()` can count stored-vs-missing
+and log an actionable summary (no longer silent). A store failure on a *resolved* file is
+now logged per-item (`exc_info`), distinct from "file absent" — replacing the old
+`except Exception: pass`.
+
+### Backfill: `reprocess()` (v0.5.0, `--reprocess-all`)
+
+The convert watermark path only CASes media for *newly*-ingested messages, so day-files
+written before `media_root` was configured keep bare `[media: <mime>]` placeholders.
+`reprocess()` (core's `run_reprocess` passes the managed day-files as `candidates`) heals
+them **surgically**: re-derive media from the DB by `key_id`, CAS any not-yet-stored file,
+and patch ONLY the manifest `media:` entry and the matching `[media: …]` body line.
+
+- **Non-destructive by design**: message text and all other lines are preserved
+  byte-for-byte — this is safe on pre-w6f files that don't persist text in the manifest,
+  where a full re-render would blank them.
+- **Idempotent** (skips messages already carrying `media.sha256`) and watermark-independent.
+  No-op with a clear warning when `media_root` is unset.
+- **Rejected**: re-rendering the day-file from the DB (would blank pre-w6f text bodies).
+
 ## WAL safety (W9)
 
 A live msgstore.db runs in WAL mode. `_wal_safe_source()` copies db + `-wal` + `-shm`
