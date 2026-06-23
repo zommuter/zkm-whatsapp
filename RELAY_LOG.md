@@ -128,3 +128,7 @@ review: verified v0.4.0 media_root (id:1c7d) + v0.5.0 reprocess backfill (id:4b8
 ## 2026-06-23 08:56 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: verified docs-only merge-old-backup runbook (8c66c52) accurate vs code; no gaming/drift; 55 passed/1 skipped; 0 open ROUTINE
+
+## 2026-06-23 09:37 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: audited v0.7.0 fail-loud-on-bad-decrypt fix (ab4e6a4) — genuine, gaming-scan clean, 56 pass/1 pre-existing skip; no reopen, routine_open=0
