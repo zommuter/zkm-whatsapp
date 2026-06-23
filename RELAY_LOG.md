@@ -124,3 +124,7 @@ review since relay-ckpt-20260622-2126: 2 manual feat commits (v0.4.0 media_root 
 ## 2026-06-23 08:46 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: verified v0.4.0 media_root (id:1c7d) + v0.5.0 reprocess backfill (id:4b8e) genuinely green, closed both in ROADMAP, fixed README+ARCHITECTURE drift
+
+## 2026-06-23 08:56 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: verified docs-only merge-old-backup runbook (8c66c52) accurate vs code; no gaming/drift; 55 passed/1 skipped; 0 open ROUTINE
