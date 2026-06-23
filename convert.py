@@ -25,16 +25,17 @@ if _here not in _sys.path:
     _sys.path.insert(0, _here)
 
 import hashlib
+import logging
+import mimetypes
 import shutil
 import sqlite3
 import tempfile
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime, tzinfo as TzInfo
+from datetime import datetime
+from datetime import tzinfo as TzInfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
-import mimetypes
 
 import yaml
 from zkm.atomic import write_atomic
@@ -43,8 +44,10 @@ from zkm.inbox import build_canonical_index, symlink_with_sidecar
 
 from state import load_state, save_state
 
+log = logging.getLogger(__name__)
+
 PLUGIN_NAME = "whatsapp"
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.4.0"
 
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
@@ -335,6 +338,13 @@ def convert(
 ) -> list[Path]:
     source_db = Path(config["source_db"]).expanduser().resolve()
     tz: TzInfo = ZoneInfo(config["timezone"]) if "timezone" in config else (datetime.now().astimezone().tzinfo or ZoneInfo("UTC"))
+    # media_root anchors the *relative* file_path values stored in message_media
+    # (e.g. "Media/WhatsApp Voice Notes/…/x.opus") to the on-disk WhatsApp media
+    # tree. Without it those relative paths never resolve and media is skipped.
+    media_root = (
+        Path(config["media_root"]).expanduser().resolve() if config.get("media_root") else None
+    )
+    media_stats = {"stored": 0, "missing": 0}
 
     db_state = load_state(store_path, source_db)
     watermark_ms: int = db_state.get("watermark_ms", 0)
@@ -442,7 +452,10 @@ def convert(
             # Handle media → CAS + inbox symlink (W6)
             for m in all_msgs:
                 if m.get("media_path"):
-                    _handle_media(m, store_path, tid, out_path, chat_jid, inbox_index)
+                    stored = _handle_media(
+                        m, store_path, tid, out_path, chat_jid, inbox_index, media_root
+                    )
+                    media_stats["stored" if stored else "missing"] += 1
 
             chat_name = sample.get("chat_name")
             rendered = _render_file(
@@ -463,6 +476,19 @@ def convert(
 
     if max_ts_ms > watermark_ms:
         save_state(store_path, source_db, {"watermark_ms": max_ts_ms})
+
+    if media_stats["missing"]:
+        hint = (
+            "set `media_root` to the WhatsApp data dir (the parent of `Media/`)"
+            if media_root is None
+            else f"check that the files exist under media_root={media_root}"
+        )
+        log.warning(
+            "whatsapp: %d media file(s) stored, %d not found — %s",
+            media_stats["stored"],
+            media_stats["missing"],
+            hint,
+        )
 
     return written
 
@@ -557,6 +583,24 @@ def _ext_for_mime(mime: str | None) -> str:
     return ext or ""
 
 
+def _resolve_media_path(raw: str, media_root: Path | None) -> Path | None:
+    """Resolve a message_media file_path to an existing file, or None.
+
+    msgstore.db stores media as paths relative to the WhatsApp data dir
+    (e.g. "Media/WhatsApp Voice Notes/…/x.opus"). An absolute path is used
+    as-is; a relative one is anchored under ``media_root`` when configured.
+    """
+    p = Path(raw)
+    if p.is_absolute():
+        return p if p.exists() else None
+    if media_root is not None:
+        cand = media_root / p
+        if cand.exists():
+            return cand
+    # Last resort: relative to cwd (preserves legacy behaviour for abs-ish paths).
+    return p if p.exists() else None
+
+
 def _handle_media(
     m: dict,
     store_path: Path,
@@ -564,11 +608,17 @@ def _handle_media(
     out_path: Path,
     chat_jid: str,
     inbox_index: dict[str, Path],
-) -> None:
-    """Store media file in CAS, create inbox symlink + .origin.json sidecar (W6)."""
-    media_path = Path(m["media_path"])
-    if not media_path.exists():
-        return
+    media_root: Path | None = None,
+) -> bool:
+    """Store media file in CAS, create inbox symlink + .origin.json sidecar (W6).
+
+    Returns True if the media file was found and stored, False if it could not
+    be located (so the caller can count and surface missing-media totals).
+    """
+    resolved = _resolve_media_path(m["media_path"], media_root)
+    if resolved is None:
+        return False
+    media_path = resolved
     subdir = f"chat/whatsapp/{tid}/originals"
     try:
         cas_path = write_object(store_path, subdir, media_path)
@@ -587,5 +637,13 @@ def _handle_media(
             },
             canonical_index=inbox_index,
         )
+        return True
     except Exception:
-        pass
+        # The file exists (resolved above) but storing it failed — a real error
+        # (permissions, disk, CAS bug), NOT "media absent". Surface it per-item
+        # rather than aborting the whole convert; don't swallow it silently.
+        log.warning(
+            "whatsapp: failed to store media %s (key_id=%s)", media_path, m.get("key_id"),
+            exc_info=True,
+        )
+        return False

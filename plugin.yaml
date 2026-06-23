@@ -1,5 +1,5 @@
 name: whatsapp
-version: 0.3.0
+version: 0.4.0
 description: Convert decrypted WhatsApp msgstore.db to per-chat-day transcript markdown
 license: MIT
 
@@ -25,6 +25,14 @@ config:
       Store owner's WhatsApp JID (e.g. 41791234567@s.whatsapp.net). Used to identify outgoing messages.
       When absent, auto-detected from the most frequent attributed from_me sender in the DB;
       falls back to owner@s.whatsapp.net if underivable.
+  media_root:
+    required: false
+    description: >-
+      Path to the WhatsApp data dir (the parent of `Media/`) holding the actual
+      media files. msgstore.db stores media as paths relative to this dir
+      (e.g. Media/WhatsApp Voice Notes/…/x.opus); without media_root those files
+      are not found and media is emitted as a bare `[media: <mime>]` placeholder
+      with no CAS bytes (so downstream transcription/amenders have nothing to use).
   timezone:
     required: false
     description: IANA timezone name for day-boundary and HH:MM formatting. Defaults to system timezone.
