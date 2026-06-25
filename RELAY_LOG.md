@@ -140,3 +140,7 @@ review (zkm* sweep): audited 1 manual commit 51b939a — /meeting note for human
 ## 2026-06-25 17:03 — reviewer (claude-opus-4-8)
 
 handoff: id:3b8a by-id/by-name decomposed into seams 058c/8040 [ROUTINE] + da9f [HARD-hands]; 7 red spec tests, 57 green, no code touched. call-log id:5e19 deferred.
+
+## 2026-06-25 17:09 — reviewer (claude-opus-4-8)
+
+handoff: id:5e19 call-log ingest seam [ROUTINE] — 3 red spec tests + 1 green guard (test_call_log.py). Completes the by-id/by-name + call-log handoff; 3 open [ROUTINE] total (058c, 8040, 5e19).
