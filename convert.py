@@ -75,6 +75,139 @@ def _thread_dir(store_path: Path, tid: str) -> Path:
     return store_path / _thread_rel(tid)
 
 
+# ── by-name view helpers (id:8040) ───────────────────────────────────────────────
+
+def _slug_label(s: str) -> str:
+    """Sanitise a chat label for use as a directory name.
+
+    Strip ``/``, NUL, and leading dots; keep UTF-8/emoji.
+    """
+    s = s.replace("/", "").replace("\x00", "").lstrip(".")
+    return s or "«unnamed»"
+
+
+def _chat_label(chat_jid: str, chat_name: str | None) -> str:
+    """Derive the human-readable label for the by-name/ first-level dir.
+
+    Group: ``chat_name``/subject with fallback ``«group»``.
+    DM:    contact ``name`` (not available here — caller passes None) → phone number.
+    """
+    is_group = chat_jid.endswith("@g.us")
+    if is_group:
+        raw = chat_name or "«group»"
+    else:
+        # DM: contact name is not stored in the chat row; fall back to phone number.
+        raw = chat_name or chat_jid.split("@")[0]
+    return _slug_label(raw)
+
+
+def _chat_leaf(chat_jid: str) -> str:
+    """Derive the unique leaf name for the by-name symlink.
+
+    DM: phone number (local part of JID, e.g. ``41792222222``).
+    Group: group short-id (local part of JID, e.g. ``41791111111-1620000000``).
+
+    Using the JID local part keeps number-changed contacts as distinct symlinks with
+    NO merge claim (Layer-2 identity resolution is out of scope).
+    """
+    return chat_jid.split("@")[0]
+
+
+def _ensure_gitignore_by_name(store_path: Path) -> None:
+    """Add ``chat/*/by-name/`` to the store .gitignore if not already present."""
+    gitignore = store_path / ".gitignore"
+    pattern = "chat/*/by-name/"
+    if gitignore.exists():
+        if pattern in gitignore.read_text():
+            return
+        current = gitignore.read_text()
+        if not current.endswith("\n"):
+            current += "\n"
+        gitignore.write_text(current + pattern + "\n")
+    else:
+        gitignore.write_text(pattern + "\n")
+
+
+def _regenerate_name_view(store_path: Path) -> None:
+    """(Re)build the regenerable by-name symlink view for all by-id/ chat dirs.
+
+    Scans store/chat/whatsapp/by-id/ and for each thread dir reads the frontmatter
+    of the lexicographically last day file (cheapest way to get chat_jid + chat_name).
+    Creates/updates relative symlinks under chat/whatsapp/by-name/<label>/<leaf>
+    pointing to ../../by-id/<tid>/ and prunes stale ones.
+
+    Idempotent: identical re-runs produce byte-identical links.
+    """
+    by_id_root = store_path / "chat" / "whatsapp" / "by-id"
+    if not by_id_root.is_dir():
+        return
+
+    by_name_root = store_path / "chat" / "whatsapp" / "by-name"
+    by_name_root.mkdir(parents=True, exist_ok=True)
+
+    # Ensure the view is gitignored.
+    _ensure_gitignore_by_name(store_path)
+
+    # Build the desired {(label, leaf): tid} mapping.
+    desired: dict[tuple[str, str], str] = {}
+    for tid_dir in sorted(by_id_root.iterdir()):
+        if not tid_dir.is_dir():
+            continue
+        tid = tid_dir.name
+        day_files = sorted(tid_dir.glob("*.md"))
+        if not day_files:
+            continue
+        # Read frontmatter of the latest day file for this chat.
+        text = day_files[-1].read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            continue
+        end = text.find("\n---\n", 4)
+        if end == -1:
+            continue
+        fm = yaml.safe_load(text[4:end]) or {}
+        chat_jid = fm.get("chat_jid", "")
+        chat_name = fm.get("chat_name")
+        if not chat_jid:
+            continue
+        label = _chat_label(chat_jid, chat_name)
+        leaf = _chat_leaf(chat_jid)
+        desired[(label, leaf)] = tid
+
+    # Collect currently existing symlinks under by-name/.
+    existing_links: dict[tuple[str, str], str] = {}
+    for label_dir in by_name_root.iterdir():
+        if not label_dir.is_dir():
+            continue
+        for link in label_dir.iterdir():
+            if link.is_symlink():
+                existing_links[(label_dir.name, link.name)] = str(link.readlink())
+
+    # Create/update desired links.
+    for (label, leaf), tid in desired.items():
+        # Relative target: ../../by-id/<tid>  (link lives at by-name/<label>/<leaf>)
+        target = f"../../by-id/{tid}"
+        link_dir = by_name_root / label
+        link_dir.mkdir(exist_ok=True)
+        link_path = link_dir / leaf
+        if link_path.is_symlink():
+            if str(link_path.readlink()) == target:
+                continue  # already correct
+            link_path.unlink()
+        elif link_path.exists():
+            link_path.unlink()
+        link_path.symlink_to(target)
+
+    # Prune stale links (exist in the tree but not in desired).
+    for (label, leaf) in set(existing_links) - set(desired):
+        stale = by_name_root / label / leaf
+        if stale.is_symlink():
+            stale.unlink()
+        # Remove empty label dirs.
+        parent = stale.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+
+
 # ── Database schema probing ──────────────────────────────────────────────────────
 
 def _table_columns(con: sqlite3.Connection, table: str) -> set[str]:
@@ -522,6 +655,9 @@ def convert(
             media_stats["missing"],
             hint,
         )
+
+    # Regenerate the human-readable by-name/ symlink view (id:8040).
+    _regenerate_name_view(store_path)
 
     return written
 
