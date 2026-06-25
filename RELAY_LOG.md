@@ -154,3 +154,7 @@ Worked id:8040 — regenerable by-name symlink view. New helpers: `_chat_label()
 Worked id:5e19 — call-log ingest. `_query_calls()` probes call_log via `_table_exists`, normalises rows into message-shaped dicts (call_id as dedup key_id). Calls merged into per-day-per-chat stream in convert(). `_render_file` renders `«call: direction kind, Ns/missed»` lines; manifest entries carry `message_type: "call"` + `call: {direction, kind, duration}`. `_reconstitute` handles call entries. `_load_existing_manifest` updated via `_manifest_dedup_key()` helper to handle call_id-keyed entries. ARCHITECTURE.md documents column mapping. REVIEW_ME.md box for wording judgment. All 4 spec tests pass.
 
 Final suite: 68 passed, 1 skipped (pre-existing WAL env skip). Friction: stale relay lease (PID 1226992 dead) held by previous reviewer session — released manually before starting.
+
+## 2026-06-25 17:36 — reviewer (claude-opus-4-8)
+
+review (zkm-whatsapp): executor work on id:058c/8040/5e19 VERIFIED green + gaming-clean (path-only test edits, no special-casing, 68 pass/1 skip). Closed all 3 [ROUTINE]. da9f [HARD-hands] remains. routine_open=0.
