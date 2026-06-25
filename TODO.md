@@ -1,6 +1,5 @@
 # zkm-whatsapp TODO
 
-Stub — the central work ledger is `~/src/zkm/TODO.md` (W-prefix section); the
-executor-facing task spec is `ROADMAP.md` in this repo.
+<!-- Stub: central work ledger ~/src/zkm/TODO.md (W-prefix); executor task spec: ROADMAP.md in this repo. --> <!-- lint-ok: plugin-stub pointer -->
 
 - [ ] Relay: 2 open ROADMAP items (all [HARD], gated) <!-- id:a006 -->
