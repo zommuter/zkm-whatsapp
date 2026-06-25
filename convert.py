@@ -313,6 +313,73 @@ def _query_messages(
     return con.execute(sql, (watermark_ms,)).fetchall()
 
 
+def _query_calls(
+    con: sqlite3.Connection,
+    watermark_ms: int,
+    jid_map: dict[int, str],
+    owner_jid: str,
+    tz: TzInfo,
+) -> list[dict]:
+    """Query call_log rows newer than watermark_ms and return normalised dicts.
+
+    Each dict matches the message-dict shape used by _render_file / _reconstitute
+    (with call_id as key_id for dedup, plus an extra call_id field for the manifest).
+    Absent call_log table → returns [].
+
+    Confirmed real call_log columns (msgstore.db v5+):
+      _id, jid_row_id, from_me, call_id, timestamp, video_call, duration
+    where duration == 0 means not connected (missed / declined).
+    """
+    if not _table_exists(con, "call_log"):
+        return []
+    rows = con.execute(
+        """
+        SELECT cl.call_id, cl.jid_row_id, cl.from_me,
+               cl.timestamp, cl.video_call, cl.duration
+        FROM call_log cl
+        WHERE cl.timestamp > ?
+        ORDER BY cl.timestamp, cl.call_id
+        """,
+        (watermark_ms,),
+    ).fetchall()
+    result: list[dict] = []
+    for row in rows:
+        call_id: str = row["call_id"]
+        jid_row_id: int = row["jid_row_id"]
+        from_me_flag: int = row["from_me"]
+        ts_ms: int = row["timestamp"]
+        video_call: int = row["video_call"]
+        duration: int = row["duration"]
+
+        chat_jid = jid_map.get(jid_row_id, f"unknown@{jid_row_id}")
+        ts = datetime.fromtimestamp(ts_ms / 1000, tz=tz)
+        sender_jid = owner_jid if from_me_flag else chat_jid
+        direction = "outgoing" if from_me_flag else "incoming"
+        kind = "video" if video_call else "voice"
+        result.append({
+            "key_id": call_id,            # used as dedup key throughout
+            "call_id": call_id,           # also stored in manifest as call_id
+            "ts": ts,
+            "timestamp_ms": ts_ms,
+            "from_me": bool(from_me_flag),
+            "sender_jid": sender_jid,
+            "chat_jid": chat_jid,         # consumed by convert() loop; not in message shape
+            "chat_jid_row_id": None,      # no row_id for calls; _build_participants handles None
+            "chat_name": None,
+            "text_data": None,
+            "quoted_key_id": None,
+            "mime_type": None,
+            "media_path": None,
+            "revoked": False,
+            "call": {
+                "direction": direction,
+                "kind": kind,
+                "duration": int(duration),
+            },
+        })
+    return result
+
+
 def _group_participants(
     con: sqlite3.Connection,
     chat_jid_row_id: int,
@@ -330,8 +397,22 @@ def _group_participants(
 
 # ── Frontmatter parsing (existing files) ─────────────────────────────────────────
 
+def _manifest_dedup_key(entry: dict) -> str | None:
+    """Return the dedup key for a manifest entry.
+
+    Regular messages use ``key_id``; call entries (id:5e19) use ``call_id`` as
+    the manifest-level stable identifier.  Both are stored under ``key_id`` in
+    the dict so existing dedup logic works uniformly, but calls also carry
+    ``call_id`` for explicit identification in the manifest YAML.
+    """
+    return entry.get("key_id") or entry.get("call_id")
+
+
 def _load_existing_manifest(path: Path) -> dict[str, dict]:
-    """Return {key_id: manifest_entry} from an existing day file, or {} if missing."""
+    """Return {dedup_key: manifest_entry} from an existing day file, or {} if missing.
+
+    Dedup key = ``key_id`` for messages, ``call_id`` for call entries (id:5e19).
+    """
     if not path.exists():
         return {}
     text = path.read_text(encoding="utf-8")
@@ -341,7 +422,12 @@ def _load_existing_manifest(path: Path) -> dict[str, dict]:
     if end == -1:
         return {}
     fm = yaml.safe_load(text[4:end]) or {}
-    return {entry["key_id"]: entry for entry in fm.get("messages", [])}
+    result = {}
+    for entry in fm.get("messages", []):
+        k = _manifest_dedup_key(entry)
+        if k:
+            result[k] = entry
+    return result
 
 
 # ── File rendering ────────────────────────────────────────────────────────────────
@@ -366,37 +452,52 @@ def _render_file(
     manifest = []
     for m in messages:
         nc = m.get("number_change")
-        if m["revoked"]:
+        call_info = m.get("call")
+        if call_info:
+            # Call entry (id:5e19): messaging-namespaced message_type, keyed by call_id.
+            entry = {
+                "call_id": m["call_id"],
+                "timestamp": m["ts"].isoformat(),
+                "sender_jid": m["sender_jid"],
+                "message_type": "call",
+                "call": call_info,
+            }
+        elif m["revoked"]:
             status = "revoked"
+            entry = {
+                "key_id": m["key_id"],
+                "timestamp": m["ts"].isoformat(),
+                "sender_jid": m["sender_jid"],
+                "status": status,
+            }
         else:
             status = "sent"
-        entry: dict = {
-            "key_id": m["key_id"],
-            "timestamp": m["ts"].isoformat(),
-            "sender_jid": m["sender_jid"],
-            "status": status,
-        }
-        if nc:
-            # Persist message_type + number_change so reconstitution rebuilds the system line.
-            # message_type: system is messaging-namespaced; status: stays core-owned (roadmap:cfd1).
-            entry["message_type"] = "system"
-            entry["number_change"] = {"old": nc["old"], "new": nc["new"]}
-        # Persist text so reconstitution is lossless (roadmap:w6f).
-        # Revoked messages must NOT leak text into the manifest.
-        elif not m["revoked"]:
-            if m.get("mime_type") or m.get("media_path"):
-                # Media: persist mime + sha256 so cas_rel can be re-derived.
-                cas_rel = m.get("cas_rel")
-                if cas_rel:
-                    entry["media"] = {
-                        "mime": m["mime_type"] or "application/octet-stream",
-                        "sha256": _sha256_from_cas_rel(cas_rel),
-                    }
+            entry = {
+                "key_id": m["key_id"],
+                "timestamp": m["ts"].isoformat(),
+                "sender_jid": m["sender_jid"],
+                "status": status,
+            }
+            if nc:
+                # Persist message_type + number_change so reconstitution rebuilds the system line.
+                # message_type: system is messaging-namespaced; status: stays core-owned (roadmap:cfd1).
+                entry["message_type"] = "system"
+                entry["number_change"] = {"old": nc["old"], "new": nc["new"]}
             else:
-                if m.get("text_data") is not None:
-                    entry["text"] = m["text_data"]
-            if m.get("quoted_key_id"):
-                entry["quoted_key_id"] = m["quoted_key_id"]
+                # Persist text so reconstitution is lossless (roadmap:w6f).
+                if m.get("mime_type") or m.get("media_path"):
+                    # Media: persist mime + sha256 so cas_rel can be re-derived.
+                    cas_rel = m.get("cas_rel")
+                    if cas_rel:
+                        entry["media"] = {
+                            "mime": m["mime_type"] or "application/octet-stream",
+                            "sha256": _sha256_from_cas_rel(cas_rel),
+                        }
+                else:
+                    if m.get("text_data") is not None:
+                        entry["text"] = m["text_data"]
+                if m.get("quoted_key_id"):
+                    entry["quoted_key_id"] = m["quoted_key_id"]
         manifest.append(entry)
 
     fm: dict = {
@@ -422,24 +523,39 @@ def _render_file(
         time_str = m["ts"].strftime("%H:%M")
 
         nc = m.get("number_change")
-        if nc:
+        call_info = m.get("call")
+        if call_info:
+            # Call line (id:5e19). Wording is a REVIEW_ME judgment call.
+            direction = call_info["direction"]   # incoming / outgoing
+            kind = call_info["kind"]             # voice / video
+            duration = call_info["duration"]
+            if duration:
+                body = f"«call: {direction} {kind}, {duration}s»"
+            else:
+                body = f"«call: {direction} {kind}, missed»"
+            lines.append(f"[{time_str}] {sender}: {body} <!-- call_id: {m['call_id']} -->")
+        elif nc:
             body = f"«number change: {nc['old']} → {nc['new']}»"
+            prefix = ""
+            lines.append(f"[{time_str}] {sender}: {prefix}{body} <!-- key_id: {m['key_id']} -->")
         elif m["revoked"]:
-            body = _DELETED_SENTINEL
+            lines.append(f"[{time_str}] {sender}: {_DELETED_SENTINEL} <!-- key_id: {m['key_id']} -->")
         elif m["media_path"] or m["mime_type"]:
             cas_rel = m.get("cas_rel")
             if cas_rel:
                 body = f"[media: {m['mime_type']} → {cas_rel}]"
             else:
                 body = f"[media: {m['mime_type'] or 'application/octet-stream'}]"
+            prefix = ""
+            if m["quoted_key_id"]:
+                prefix = f"{_REPLY_INDICATOR} (re: {m['quoted_key_id']}) "
+            lines.append(f"[{time_str}] {sender}: {prefix}{body} <!-- key_id: {m['key_id']} -->")
         else:
             body = m["text_data"] or ""
-
-        prefix = ""
-        if m["quoted_key_id"]:
-            prefix = f"{_REPLY_INDICATOR} (re: {m['quoted_key_id']}) "
-
-        lines.append(f"[{time_str}] {sender}: {prefix}{body} <!-- key_id: {m['key_id']} -->")
+            prefix = ""
+            if m["quoted_key_id"]:
+                prefix = f"{_REPLY_INDICATOR} (re: {m['quoted_key_id']}) "
+            lines.append(f"[{time_str}] {sender}: {prefix}{body} <!-- key_id: {m['key_id']} -->")
 
     yaml_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False)
     body_str = "\n".join(lines)
@@ -587,6 +703,15 @@ def convert(
             if ts_ms > max_ts_ms:
                 max_ts_ms = ts_ms
 
+        # Merge call_log rows into the per-day stream (id:5e19).
+        call_rows = _query_calls(con, watermark_ms, jid_map, owner_jid, tz)
+        for call_dict in call_rows:
+            chat_jid = call_dict.pop("chat_jid")  # consumed here; not in message shape
+            day_str = call_dict["ts"].strftime("%Y-%m-%d")
+            by_chat_day[(chat_jid, day_str)].append(call_dict)
+            if call_dict["timestamp_ms"] > max_ts_ms:
+                max_ts_ms = call_dict["timestamp_ms"]
+
         inbox_index: dict[str, Path] = build_canonical_index(store_path, "inbox/whatsapp")
         written: list[Path] = []
         total = len(by_chat_day)
@@ -609,10 +734,11 @@ def convert(
             all_msgs_by_key = {**{k: _reconstitute(v, tz, thread_id=tid) for k, v in existing.items()}, **new_by_key}
             all_msgs = sorted(all_msgs_by_key.values(), key=lambda m: (m["timestamp_ms"], m["key_id"]))
 
-            # Determine participants
-            sample = new_msgs[0]
+            # Determine participants; use the first regular message for chat metadata
+            # (call dicts have chat_jid_row_id=None / chat_name=None by design).
+            sample = next((m for m in new_msgs if m.get("chat_jid_row_id") is not None), new_msgs[0])
             participants = _build_participants(
-                con, chat_jid, sample["chat_jid_row_id"], jid_map, owner_jid, all_msgs
+                con, chat_jid, sample.get("chat_jid_row_id"), jid_map, owner_jid, all_msgs
             )
 
             # Handle media → CAS + inbox symlink (W6)
@@ -623,7 +749,10 @@ def convert(
                     )
                     media_stats["stored" if stored else "missing"] += 1
 
-            chat_name = sample.get("chat_name")
+            # Pick chat_name from the first regular message (calls carry None).
+            chat_name = next(
+                (m.get("chat_name") for m in new_msgs if m.get("chat_name") is not None), None
+            )
             rendered = _render_file(
                 chat_jid=chat_jid,
                 chat_name=chat_name,
@@ -877,17 +1006,42 @@ def reprocess(
 def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> dict:
     """Re-create a message dict from a manifest entry (for merging with existing files).
 
-    New entries (roadmap:w6f) carry ``text``, ``quoted_key_id`` and
-    ``media: {mime, sha256}``; old entries without these keys load without error
-    (bodies stay blank — healing pre-existing files is out of scope).
+    Handles three entry shapes:
+    - Regular messages: ``key_id``, ``status``, optional ``text``/``quoted_key_id``/``media``
+    - System events (id:w11): ``message_type: system``, ``number_change``
+    - Call entries (id:5e19): ``call_id``, ``message_type: call``, ``call: {direction, kind, duration}``
 
+    Old entries without new keys load without error (bodies stay blank).
     Pass ``thread_id`` to enable re-derivation of ``cas_rel`` for media entries.
     """
     ts = datetime.fromisoformat(entry["timestamp"]).astimezone(tz)
+    message_type = entry.get("message_type")
+
+    # Call entry (id:5e19): keyed by call_id, carries message_type: call.
+    if message_type == "call":
+        call_id = entry["call_id"]
+        call_info = entry.get("call", {})
+        return {
+            "key_id": call_id,        # dedup key
+            "call_id": call_id,
+            "ts": ts,
+            "timestamp_ms": int(ts.timestamp() * 1000),
+            "from_me": False,
+            "sender_jid": entry["sender_jid"],
+            "text_data": None,
+            "chat_jid_row_id": None,
+            "chat_name": None,
+            "quoted_key_id": None,
+            "mime_type": None,
+            "media_path": None,
+            "revoked": False,
+            "call": call_info,
+        }
+
     status = entry.get("status", "sent")
     revoked = status == "revoked"
     # Detect system events via message_type (roadmap:cfd1; avoids colliding with core status: enum).
-    is_system = entry.get("message_type") == "system"
+    is_system = message_type == "system"
 
     # Recover number_change data for system events (roadmap:w11).
     number_change: dict | None = entry.get("number_change") if is_system else None

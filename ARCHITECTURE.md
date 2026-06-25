@@ -184,6 +184,31 @@ Both shell out to existing agents; output is validated as exactly 64 hex chars.
 - Module is named `keysource.py`, NOT `secrets.py` — the plugin dir is inserted into
   `sys.path`, so a `secrets.py` would shadow the stdlib module.
 
+## Call log ingest (id:5e19)
+
+`call_log` is probed via `_table_exists` (same pattern as `message_quoted`). Absent
+table → behaviour unchanged. When present, rows are queried with the same watermark and
+merged into the per-day per-chat stream (sorted by `(timestamp, call_id)`).
+
+**Column mapping** (confirmed against msgstore.db v5+ with call_log rows):
+
+| column      | type    | semantics |
+|-------------|---------|-----------|
+| `jid_row_id`| INTEGER | identifies the OTHER party in the call (same as `chat_jid_row_id` for messages) |
+| `from_me`   | INTEGER | 1 = outgoing call, 0 = incoming |
+| `call_id`   | TEXT    | stable identifier (dedup key); stored as `call_id` in the manifest |
+| `timestamp` | INTEGER | milliseconds UTC |
+| `video_call`| INTEGER | 1 = video call, 0 = voice only |
+| `duration`  | INTEGER | call duration in **seconds**; 0 means not connected (missed/declined) |
+
+**Dedup**: `call_id` (not `key_id` — calls use a different protocol ID space).
+**Manifest**: `message_type: "call"` (messaging-namespaced per roadmap:cfd1), plus
+`call: {direction, kind, duration}` for reconstitution, plus `call_id` for identification.
+**Reconstitution**: `_reconstitute` detects `message_type == "call"` and returns a
+call-shaped dict so day-file rewrites preserve call lines.
+
+**REVIEW_ME**: the exact rendered wording is a judgment call — see REVIEW_ME.md id:5e19.
+
 ## Determinism contract
 
 Sort by `(timestamp, key_id)`; fixed sentinels (`«deleted»`, `↩ (re: …)`); no locale
