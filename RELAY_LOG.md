@@ -132,3 +132,7 @@ review: verified docs-only merge-old-backup runbook (8c66c52) accurate vs code; 
 ## 2026-06-23 09:37 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: audited v0.7.0 fail-loud-on-bad-decrypt fix (ab4e6a4) — genuine, gaming-scan clean, 56 pass/1 pre-existing skip; no reopen, routine_open=0
+
+## 2026-06-25 16:27 — reviewer (claude-opus-4-8)
+
+review (zkm* sweep): audited 1 manual commit 51b939a — /meeting note for human-readable chat folder names (id:3b8a, approach B decided). docs/meeting-notes-only; gaming-scan clean; no code/test changes. No ROADMAP delta (impl tracked in zkm W-ledger).
