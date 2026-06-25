@@ -188,7 +188,8 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Acceptance**: flagging only (never auto-merge identities — see core
     "name is not a UID" policy); proposal doc before implementation.
 
-- [ ] by-id canonical: move the chat store path under `by-id/` [ROUTINE] <!-- id:058c -->
+- [x] by-id canonical: move the chat store path under `by-id/` [ROUTINE] <!-- id:058c -->
+  - **Done** 2026-06-25 (f458cea), verified review: gaming-clean, 5 existing test files updated path-only (assertions intact), `_thread_rel()`/`_thread_dir()` single derivation point; full suite 68 green.
   - **Seam of** id:3b8a (meeting 2026-06-25 human-readable-chat-folder-names; umbrella in
     `~/src/zkm/TODO.md`). See ARCHITECTURE.md "Folder naming".
   - **Acceptance**: day files are emitted at `chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md`
@@ -208,7 +209,8 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Context**: `convert.py:452-454` (out_dir), `:753` (cas_rel), `:851` (originals subdir),
     `_load_existing_manifest`. Keep the path prefix in ONE derivation so id:8040 + id:da9f reuse it.
 
-- [ ] by-name view: regenerable human-readable symlink tree [ROUTINE] <!-- id:8040 -->
+- [x] by-name view: regenerable human-readable symlink tree [ROUTINE] <!-- id:8040 -->
+  - **Done** 2026-06-25 (2fc3350), verified review: `_regenerate_name_view()` scans by-id/ each run (idempotent), `_chat_label`/`_chat_leaf` helpers, `_ensure_gitignore_by_name()`; outcome-based tests green (symlinks resolve into by-id/).
   - **Seam of** id:3b8a. **Depends on** id:058c (the view targets `by-id/<tid>/`).
   - **Acceptance**: each convert run (re)generates `chat/whatsapp/by-name/<label>/<leaf>`
     relative symlinks pointing to the canonical `by-id/<tid>/` dir. `<label>` derived
@@ -239,7 +241,8 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Why HARD — hands**: live user-store mutation + a cross-repo (zkm-stt) dependency that
     must be coordinated; no red test (verified by the migration journey, not a unit test).
 
-- [ ] call-log ingest: render WhatsApp calls into the per-chat-day transcript [ROUTINE] <!-- id:5e19 -->
+- [x] call-log ingest: render WhatsApp calls into the per-chat-day transcript [ROUTINE] <!-- id:5e19 -->
+  - **Done** 2026-06-25 (e1ccadc), verified review: probed `call_log`, calls render + `message_type:"call"` manifest (dedup via `_manifest_dedup_key`, rebuilt by `_reconstitute`); REVIEW_ME box added for line wording; ARCHITECTURE documents the real column mapping. **NOTE (whatsapp ingest only)**: the cross-cutting call/voice-event *rendering convention* for `messaging-spec.md` (telegram/signal/threema) is the remaining half of zkm-core id:5e19 — NOT closed by this.
   - Central-ledger counterpart `~/src/zkm/TODO.md` id:5e19 (W call-log ingest). The plugin
     today reads only `message` (+quoted/media/number-change); the `call_log` table is untouched.
   - **Acceptance**: probe `call_log` via `_table_exists` (same pattern as `message_quoted` /

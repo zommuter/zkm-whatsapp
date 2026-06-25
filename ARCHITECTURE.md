@@ -30,7 +30,8 @@ All reads go through `sqlite3` from the stdlib; optional schema features are pro
 
 ## Segmentation: one file per chat per day
 
-Output is `chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md`.
+Output is `chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md` (the `by-id/` canonical — see
+"Folder naming" below for the by-id/by-name split, shipped 2026-06-25).
 
 - **Rationale**: bounded file size, stable paths, natural temporal granularity for the
   git-as-temporal-index model; day boundary is computed in the configured (or system)
@@ -40,11 +41,11 @@ Output is `chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md`.
 - **Future (W7, gated)**: smarter burst/temporal-density re-segmentation must be
   *additive* and MUST NOT rewrite chat-level `thread_id`.
 
-## Folder naming: opaque canonical + regenerable name view (DECIDED id:3b8a, pending implementation)
+## Folder naming: opaque canonical + regenerable name view (IMPLEMENTED id:058c + id:8040; 2026-06-25)
 
 Meeting `~/src/zkm/docs/meeting-notes/2026-06-25-1536-human-readable-chat-folder-names.md`.
-Current code emits the flat `chat/whatsapp/<thread_id>/…` shown above; the decided target
-(roadmap seams id:058c + id:8040) is:
+Shipped 2026-06-25 (seams id:058c canonical move + id:8040 name view). The live `~/knowledge`
+store migration + zkm-stt path lockstep remains the `[HARD — hands]` seam id:da9f. The layout:
 
 - **Canonical** stays the opaque `thread_id` but moves under a `by-id/` subdir:
   `chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md` (+ `…/by-id/<thread_id>/originals/_objects/…`).
@@ -122,7 +123,7 @@ is unchanged). Open ROADMAP item id:cfd1 mirrors central `~/src/zkm/TODO.md` id:
 
 ## Media: CAS + inbox symlink + sidecar (W6)
 
-Media files go to `chat/whatsapp/<tid>/originals/_objects/` via core `zkm.cas.write_object`
+Media files go to `chat/whatsapp/by-id/<tid>/originals/_objects/` via core `zkm.cas.write_object`
 (content-addressed, idempotent); a human-browsable symlink + `.origin.json` producer
 sidecar lands in `inbox/whatsapp/<tid>/` via `zkm.inbox.symlink_with_sidecar`.
 
