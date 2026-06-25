@@ -136,3 +136,7 @@ review: audited v0.7.0 fail-loud-on-bad-decrypt fix (ab4e6a4) — genuine, gamin
 ## 2026-06-25 16:27 — reviewer (claude-opus-4-8)
 
 review (zkm* sweep): audited 1 manual commit 51b939a — /meeting note for human-readable chat folder names (id:3b8a, approach B decided). docs/meeting-notes-only; gaming-scan clean; no code/test changes. No ROADMAP delta (impl tracked in zkm W-ledger).
+
+## 2026-06-25 17:03 — reviewer (claude-opus-4-8)
+
+handoff: id:3b8a by-id/by-name decomposed into seams 058c/8040 [ROUTINE] + da9f [HARD-hands]; 7 red spec tests, 57 green, no code touched. call-log id:5e19 deferred.
