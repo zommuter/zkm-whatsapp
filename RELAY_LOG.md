@@ -144,3 +144,13 @@ handoff: id:3b8a by-id/by-name decomposed into seams 058c/8040 [ROUTINE] + da9f 
 ## 2026-06-25 17:09 — reviewer (claude-opus-4-8)
 
 handoff: id:5e19 call-log ingest seam [ROUTINE] — 3 red spec tests + 1 green guard (test_call_log.py). Completes the by-id/by-name + call-log handoff; 3 open [ROUTINE] total (058c, 8040, 5e19).
+
+## 2026-06-25 — executor (sonnet)
+
+Worked id:058c — moved canonical chat path from `chat/whatsapp/<tid>/` to `chat/whatsapp/by-id/<tid>/`. Added `_thread_rel()` + `_thread_dir()` helpers as the single derivation point. Updated all existing tests that asserted the old flat path (test_convert.py, test_media.py, test_media_root.py, test_number_change.py, test_rewrite_persistence.py) — this is the intended spec change from id:3b8a. CAS originals subdir and _reconstitute cas_rel derivation follow the new path.
+
+Worked id:8040 — regenerable by-name symlink view. New helpers: `_chat_label()`, `_chat_leaf()`, `_slug_label()`, `_ensure_gitignore_by_name()`, `_regenerate_name_view()`. Called at end of `convert()`. Scans all by-id/ dirs, creates/updates relative symlinks at `by-name/<label>/<leaf>`, prunes stale ones. Idempotent. Adds `chat/*/by-name/` to store `.gitignore`. All 5 spec tests pass.
+
+Worked id:5e19 — call-log ingest. `_query_calls()` probes call_log via `_table_exists`, normalises rows into message-shaped dicts (call_id as dedup key_id). Calls merged into per-day-per-chat stream in convert(). `_render_file` renders `«call: direction kind, Ns/missed»` lines; manifest entries carry `message_type: "call"` + `call: {direction, kind, duration}`. `_reconstitute` handles call entries. `_load_existing_manifest` updated via `_manifest_dedup_key()` helper to handle call_id-keyed entries. ARCHITECTURE.md documents column mapping. REVIEW_ME.md box for wording judgment. All 4 spec tests pass.
+
+Final suite: 68 passed, 1 skipped (pre-existing WAL env skip). Friction: stale relay lease (PID 1226992 dead) held by previous reviewer session — released manually before starting.
