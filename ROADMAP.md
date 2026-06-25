@@ -187,3 +187,54 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     missed-number-change case.
   - **Acceptance**: flagging only (never auto-merge identities — see core
     "name is not a UID" policy); proposal doc before implementation.
+
+- [ ] by-id canonical: move the chat store path under `by-id/` [ROUTINE] <!-- id:058c -->
+  - **Seam of** id:3b8a (meeting 2026-06-25 human-readable-chat-folder-names; umbrella in
+    `~/src/zkm/TODO.md`). See ARCHITECTURE.md "Folder naming".
+  - **Acceptance**: day files are emitted at `chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md`
+    (was `chat/whatsapp/<thread_id>/…`); the media CAS root and originals subdir move with it
+    (`chat/whatsapp/by-id/<tid>/originals/_objects/<aa>/<rest>`); the existing-file scan that
+    `_load_existing_manifest`/`_reconstitute` walks reads from the new location. `thread_id`
+    value, dedup (key_id), watermark keying, and determinism (identical re-run returns `[]`)
+    are all UNCHANGED — only the on-disk path prefix gains `by-id/`. Existing layout tests
+    that assert the bare `chat/whatsapp/<tid>/` path (e.g. `test_convert_per_chat_day_layout`,
+    `test_convert_thread_id_in_path`, and the `.glob` locators in `test_convert.py`) are
+    updated to the `by-id/` path as part of this item — that is the intended spec change
+    from id:3b8a, not gaming. NO migration of an existing real store here (that is id:da9f).
+  - **Tests**: `tests/test_by_id_layout.py` — `test_day_files_emitted_under_by_id`,
+    `test_thread_id_dir_lives_under_by_id` (both `# roadmap:058c`, currently RED) +
+    `test_determinism_preserved_under_by_id` (green regression guard).
+  - **Done-check**: `uv run pytest tests/test_by_id_layout.py tests/test_convert.py`
+  - **Context**: `convert.py:452-454` (out_dir), `:753` (cas_rel), `:851` (originals subdir),
+    `_load_existing_manifest`. Keep the path prefix in ONE derivation so id:8040 + id:da9f reuse it.
+
+- [ ] by-name view: regenerable human-readable symlink tree [ROUTINE] <!-- id:8040 -->
+  - **Seam of** id:3b8a. **Depends on** id:058c (the view targets `by-id/<tid>/`).
+  - **Acceptance**: each convert run (re)generates `chat/whatsapp/by-name/<label>/<leaf>`
+    relative symlinks pointing to the canonical `by-id/<tid>/` dir. `<label>` derived
+    mechanically: group `chat_name`/subject, DM contact `name`; fallbacks `«group»`
+    (unnamed group) / phone number (nameless DM); slug-sanitised (strip `/`, NUL, leading
+    dots; UTF-8/emoji kept). `<leaf>` = phone number for DMs, group-short-id for groups —
+    leaf uniqueness lets a number-changed or same-named contact coexist as distinct symlinks
+    with NO merge claim (no identity guessing — Layer-2/NER is out of scope). The view is
+    idempotent: regenerating over an existing tree yields byte-identical links and stale
+    links for removed threads are pruned. `chat/*/by-name/` is added to the store `.gitignore`
+    (created if absent) — the view is derived, never committed.
+  - **Tests**: `tests/test_name_view.py` — `test_by_name_symlink_resolves_to_by_id`,
+    `test_group_label_from_subject`, `test_dm_leaf_is_phone_number`,
+    `test_by_name_is_gitignored`, `test_view_regeneration_idempotent` (all `# roadmap:8040`, RED).
+  - **Done-check**: `uv run pytest tests/test_name_view.py`
+  - **Context**: new pure helpers `_chat_label(...)` / `_chat_leaf(...)` (unit-testable) +
+    `_regenerate_name_view(store_path)` called at the end of `convert()`. Reuse the `by-id/`
+    path prefix from id:058c. chat_name/participants are already in frontmatter to derive from.
+
+- [ ] live-store migration + zkm-stt path lockstep [HARD — hands] <!-- id:da9f -->
+  - **Seam of** id:3b8a. **Gated on** id:058c + id:8040 shipping. **Hands** (touches the
+    user's `~/knowledge` store + cross-repo coordination — not CI-runnable).
+  - **Acceptance**: one-time `git mv chat/whatsapp/<tid>/ → chat/whatsapp/by-id/<tid>/` across
+    the existing store (history-preserving), regenerate the by-name view, and verify zkm-stt
+    still resolves voicemail-transcript CAS paths against the new `by-id/` root (land the
+    zkm-stt change in lockstep so neither repo breaks the other). The `messaging-spec.md`
+    layout change is a SEPARATE zkm-core item (already in `~/src/zkm/TODO.md`), not this one.
+  - **Why HARD — hands**: live user-store mutation + a cross-repo (zkm-stt) dependency that
+    must be coordinated; no red test (verified by the migration journey, not a unit test).

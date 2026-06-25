@@ -40,6 +40,36 @@ Output is `chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md`.
 - **Future (W7, gated)**: smarter burst/temporal-density re-segmentation must be
   *additive* and MUST NOT rewrite chat-level `thread_id`.
 
+## Folder naming: opaque canonical + regenerable name view (DECIDED id:3b8a, pending implementation)
+
+Meeting `~/src/zkm/docs/meeting-notes/2026-06-25-1536-human-readable-chat-folder-names.md`.
+Current code emits the flat `chat/whatsapp/<thread_id>/…` shown above; the decided target
+(roadmap seams id:058c + id:8040) is:
+
+- **Canonical** stays the opaque `thread_id` but moves under a `by-id/` subdir:
+  `chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md` (+ `…/by-id/<thread_id>/originals/_objects/…`).
+  Stable: it is the dedup anchor, the git-history anchor, and the media-CAS root, and
+  **zkm-stt writes voicemail transcripts against it** — so it must not churn.
+- **Browsable view** is a regenerable, **gitignored** symlink tree:
+  `chat/whatsapp/by-name/<label>/<leaf> → ../../by-id/<thread_id>/`, rebuilt every convert run.
+  `<label>` is derived mechanically from frontmatter (group subject / DM contact name) with
+  fallbacks (`«group»` / phone number), slug-sanitised, UTF-8 kept. `<leaf>` is the phone
+  number (DM) / group-short-id — unique, so a number-changed contact and two distinct
+  same-named contacts coexist as separate symlinks with **no merge claim**.
+- **Rationale**: renames re-point a symlink → zero git-history churn; mirrors the inbox
+  CAS+symlink split. Browsability without baking a mutable name into the dedup/CAS root.
+- **Rejected**: (A) slug+hex canonical `chat/whatsapp/<slug>-<short-id>/` — bakes a name into
+  the CAS root, slug churns or goes stale on rename; (C) rename canonical on identity
+  resolution — churns git, breaks `git log --follow`, stales baked CAS paths, violates W7
+  (id:367f "MUST NOT rewrite thread_id").
+- **Out of scope (Layer 2, deferred)**: aggregating multiple threads into one *person*
+  (number change = same human) — manual identity layer (NER person pages / `same-as` map,
+  Phase 3). The plugin makes **no** identity guesses. `message_system_number_change`
+  (already captured, id:w11) is the future hook.
+- **Cross-repo**: the `messaging-spec.md` layout change (Telegram/Signal/Threema inherit)
+  lives in the zkm core repo; the live `~/knowledge` store migration + zkm-stt path lockstep
+  is the `[HARD — hands]` seam id:da9f.
+
 ## Identity: key_id everywhere
 
 - `thread_id = sha256(chat_jid)[:16]` — **rejected**: raw JID in paths (phone numbers in
