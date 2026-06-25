@@ -22,7 +22,7 @@ def _run(store: Path, config: dict) -> list[Path]:
 def test_cas_object_created(store: Path, config: dict) -> None:
     _run(store, config)
     tid = _thread_id(CHAT_JID)
-    objects_dir = store / "chat" / "whatsapp" / tid / "originals" / "_objects"
+    objects_dir = store / "chat" / "whatsapp" / "by-id" / tid / "originals" / "_objects"
     all_objects = list(objects_dir.rglob("*"))
     cas_files = [p for p in all_objects if p.is_file()]
     assert len(cas_files) == 1
@@ -61,7 +61,7 @@ def test_origin_json_sidecar(store: Path, config: dict) -> None:
 def test_body_line_references_cas(store: Path, config: dict) -> None:
     _run(store, config)
     tid = _thread_id(CHAT_JID)
-    day_files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    day_files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     assert len(day_files) == 1
     body = day_files[0].read_text()
     # The media message line must reference the CAS path.

@@ -1,7 +1,7 @@
 """zkm-whatsapp — convert decrypted WhatsApp msgstore.db to per-chat-day transcripts.
 
 Source: decrypted SQLite msgstore.db (stdlib sqlite3, zero extra deps for DB parsing).
-Output: chat/whatsapp/<thread_id>/YYYY-MM-DD.md — one file per chat per day.
+Output: chat/whatsapp/by-id/<thread_id>/YYYY-MM-DD.md — one file per chat per day.
 
 Stable IDs (W3):
   message_id  = whatsapp:<chat_jid>:<key_id>  (protocol-level key_id)
@@ -59,6 +59,20 @@ ProgressCallback = Callable[[int, int | None, str], None]
 
 def _thread_id(chat_jid: str) -> str:
     return hashlib.sha256(chat_jid.encode()).hexdigest()[:16]
+
+
+def _thread_rel(tid: str) -> str:
+    """Canonical relative chat path: chat/whatsapp/by-id/<tid>.
+
+    Returns a POSIX-style string so callers can build sub-paths without a store root.
+    Single derivation so id:8040 (by-name view) and id:da9f (migration) can reuse it.
+    """
+    return f"chat/whatsapp/by-id/{tid}"
+
+
+def _thread_dir(store_path: Path, tid: str) -> Path:
+    """Canonical absolute chat directory: <store>/chat/whatsapp/by-id/<tid>/."""
+    return store_path / _thread_rel(tid)
 
 
 # ── Database schema probing ──────────────────────────────────────────────────────
@@ -449,7 +463,7 @@ def convert(
                 progress(i, total, f"{chat_jid} {day_str}")
 
             tid = _thread_id(chat_jid)
-            out_dir = store_path / "chat" / "whatsapp" / tid
+            out_dir = _thread_dir(store_path, tid)
             out_dir.mkdir(parents=True, exist_ok=True)
             out_path = out_dir / f"{day_str}.md"
 
@@ -750,7 +764,7 @@ def _reconstitute(entry: dict, tz: TzInfo, *, thread_id: str | None = None) -> d
         mime_type = media.get("mime")
         sha = media.get("sha256", "")
         if sha:
-            cas_rel = f"chat/whatsapp/{thread_id}/originals/_objects/{sha[:2]}/{sha[2:]}"
+            cas_rel = f"{_thread_rel(thread_id)}/originals/_objects/{sha[:2]}/{sha[2:]}"
     elif media:
         mime_type = media.get("mime")
 
@@ -848,7 +862,7 @@ def _handle_media(
     if resolved is None:
         return False
     media_path = resolved
-    subdir = f"chat/whatsapp/{tid}/originals"
+    subdir = f"{_thread_rel(tid)}/originals"
     try:
         cas_path = write_object(store_path, subdir, media_path)
         m["cas_rel"] = str(cas_path.relative_to(store_path))

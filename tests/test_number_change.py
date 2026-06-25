@@ -60,7 +60,7 @@ def _setup(tmp_path: Path) -> tuple[Path, Path, dict]:
 
 
 def _day_file(store: Path) -> Path:
-    files = list((store / "chat" / "whatsapp" / _thread_id(CHAT_JID)).glob("*.md"))
+    files = list((store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID)).glob("*.md"))
     assert len(files) == 1
     return files[0]
 

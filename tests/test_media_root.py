@@ -47,14 +47,14 @@ def _manifest(day_path: Path) -> dict:
 
 
 def _day_file(store: Path) -> Path:
-    return next((store / "chat" / "whatsapp" / _thread_id(CHAT_JID)).glob("*.md"))
+    return next((store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID)).glob("*.md"))
 
 
 def test_media_root_resolves_relative_path_to_cas(tmp_path: Path) -> None:
     store, db, media_root = _build(tmp_path)
     convert(store, _cfg(db, media_root=str(media_root)))
 
-    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    objects = store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID) / "originals" / "_objects"
     cas_files = [p for p in objects.rglob("*") if p.is_file() and not p.name.endswith(".json")]
     assert len(cas_files) == 1
     assert cas_files[0].read_bytes() == MEDIA_BYTES
@@ -70,7 +70,7 @@ def test_without_media_root_relative_path_unresolved(tmp_path: Path) -> None:
     store, db, _ = _build(tmp_path)
     convert(store, _cfg(db))  # no media_root → relative path cannot resolve
 
-    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    objects = store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID) / "originals" / "_objects"
     cas_files = [p for p in objects.rglob("*") if p.is_file()] if objects.exists() else []
     assert cas_files == []
     # Bare placeholder in the manifest: no media dict, so amenders see nothing.
@@ -91,8 +91,8 @@ def test_reprocess_backfills_media_non_destructively(tmp_path: Path) -> None:
 
     after = day.read_text()
     assert "Hello there" in after  # text preserved — non-destructive (no w6f blanking)
-    assert "→ chat/whatsapp/" in after  # media body line healed
-    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    assert "→ chat/whatsapp/" in after  # media body line healed (by-id path still starts with chat/whatsapp/)
+    objects = store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID) / "originals" / "_objects"
     cas = [p for p in objects.rglob("*") if p.is_file() and not p.name.endswith(".json")]
     assert len(cas) == 1 and cas[0].read_bytes() == MEDIA_BYTES
     entry = next(m for m in _manifest(day)["messages"] if m["key_id"] == MEDIA_KEY_ID)
@@ -114,7 +114,7 @@ def test_reprocess_without_media_root_heals_but_no_cas(tmp_path: Path) -> None:
     convert(store, _cfg(db))
     day = _day_file(store)
     reprocess(store, _cfg(db), [day])  # no media_root
-    objects = store / "chat" / "whatsapp" / _thread_id(CHAT_JID) / "originals" / "_objects"
+    objects = store / "chat" / "whatsapp" / "by-id" / _thread_id(CHAT_JID) / "originals" / "_objects"
     cas = [p for p in objects.rglob("*") if p.is_file()] if objects.exists() else []
     assert cas == []  # no bytes stored without media_root
     # …but the media KIND is preserved in the manifest (renders [media: <mime>]).

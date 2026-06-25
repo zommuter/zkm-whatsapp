@@ -52,7 +52,7 @@ def _add_late_message(db: Path) -> None:
 
 def _day_file(store: Path) -> Path:
     tid = _thread_id(CHAT_JID)
-    files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     assert len(files) == 1
     return files[0]
 
@@ -89,7 +89,7 @@ def test_rewrite_preserves_reply_prefix(tmp_path: Path):  # roadmap:w6f
 def test_rewrite_preserves_media_line(tmp_path: Path):  # roadmap:w6f
     text = _rewrite(tmp_path).read_text()
     sha = hashlib.sha256(MEDIA_BYTES).hexdigest()
-    cas_rel = f"chat/whatsapp/{_thread_id(CHAT_JID)}/originals/_objects/{sha[:2]}/{sha[2:]}"
+    cas_rel = f"chat/whatsapp/by-id/{_thread_id(CHAT_JID)}/originals/_objects/{sha[:2]}/{sha[2:]}"
     assert f"[media: {MEDIA_MIME} → {cas_rel}]" in text
 
 
@@ -122,7 +122,7 @@ def test_old_manifest_without_new_keys_still_loads(tmp_path: Path):  # roadmap:w
     db, store, config = _private_setup(tmp_path)
     tid = _thread_id(CHAT_JID)
     day = datetime.fromtimestamp(1744550200, tz=ZoneInfo(TZ)).strftime("%Y-%m-%d")
-    out_dir = store / "chat" / "whatsapp" / tid
+    out_dir = store / "chat" / "whatsapp" / "by-id" / tid
     out_dir.mkdir(parents=True)
     legacy_ts = datetime.fromtimestamp(1744550100, tz=ZoneInfo(TZ)).isoformat()
     legacy = {

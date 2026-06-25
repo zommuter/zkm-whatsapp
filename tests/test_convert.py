@@ -48,9 +48,10 @@ def test_convert_creates_chat_whatsapp_dir(store: Path, config: dict):
 def test_convert_per_chat_day_layout(store: Path, config: dict):
     written = convert(store, config)
     for p in written:
-        # path: chat/whatsapp/<thread_id>/<YYYY-MM-DD>.md
+        # path: chat/whatsapp/by-id/<thread_id>/<YYYY-MM-DD>.md
         assert p.suffix == ".md"
-        assert p.parent.parent.name == "whatsapp"
+        assert p.parent.parent.name == "by-id"
+        assert p.parent.parent.parent.name == "whatsapp"
         assert len(p.parent.name) == 16  # thread_id hex prefix
         assert len(p.stem) == 10         # YYYY-MM-DD
 
@@ -91,7 +92,7 @@ def test_convert_deleted_tombstone(store: Path, config: dict):
     # Find the 1:1 chat day file
     jid = "41792222222@s.whatsapp.net"
     tid = _thread_id(jid)
-    day_files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    day_files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     assert len(day_files) == 1
     text = day_files[0].read_text()
 
@@ -108,7 +109,7 @@ def test_convert_reply_indicator(store: Path, config: dict):
     convert(store, config)
     jid = "41792222222@s.whatsapp.net"
     tid = _thread_id(jid)
-    day_files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    day_files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     text = day_files[0].read_text()
     assert f"{_REPLY_INDICATOR} (re: AABBCC001)" in text
 
@@ -146,7 +147,7 @@ def test_convert_dedup_on_key_id(store: Path, config: dict, test_db: Path):
     convert(store, config)
     jid = "41792222222@s.whatsapp.net"
     tid = _thread_id(jid)
-    day_files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    day_files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     text = day_files[0].read_text()
     assert text.count("AABBCC002") == 2  # once in manifest, once in body line
 
@@ -185,7 +186,7 @@ def test_convert_group_chat_name(store: Path, config: dict):
     convert(store, config)
     group_jid = "41791111111-1620000000@g.us"
     tid = _thread_id(group_jid)
-    day_files = list((store / "chat" / "whatsapp" / tid).glob("*.md"))
+    day_files = list((store / "chat" / "whatsapp" / "by-id" / tid).glob("*.md"))
     assert len(day_files) == 1
     text = day_files[0].read_text()
     end = text.find("\n---\n", 4)
