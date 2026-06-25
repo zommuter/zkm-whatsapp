@@ -238,3 +238,32 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     layout change is a SEPARATE zkm-core item (already in `~/src/zkm/TODO.md`), not this one.
   - **Why HARD — hands**: live user-store mutation + a cross-repo (zkm-stt) dependency that
     must be coordinated; no red test (verified by the migration journey, not a unit test).
+
+- [ ] call-log ingest: render WhatsApp calls into the per-chat-day transcript [ROUTINE] <!-- id:5e19 -->
+  - Central-ledger counterpart `~/src/zkm/TODO.md` id:5e19 (W call-log ingest). The plugin
+    today reads only `message` (+quoted/media/number-change); the `call_log` table is untouched.
+  - **Acceptance**: probe `call_log` via `_table_exists` (same pattern as `message_quoted` /
+    `message_system_number_change`). For each call row, render a deterministic system-style
+    body line in the day file of the chat-with-that-jid (call day in the configured tz),
+    framed like other system events, conveying: **direction** (incoming/outgoing from
+    `from_me`), **kind** (voice/video from `video_call`), and **duration-or-missed**
+    (`duration` seconds; a not-connected call → "missed"). The manifest entry is keyed by the
+    call's stable id (`call_id`), carries `message_type: "call"` (messaging-namespaced, NOT
+    `status:` — roadmap:cfd1) plus `call: {direction, kind, duration}` so the line survives a
+    day-file rewrite (`_reconstitute` rebuilds it). Calls merge into the per-day message
+    stream sorted by `(timestamp, id)`; dedup on `call_id`. Absent `call_log` table →
+    behaviour unchanged. Determinism preserved (identical re-run returns `[]`). The exact
+    line WORDING is a judgment call → leave a `REVIEW_ME.md` box. **Cross-cutting**: the
+    call/voice-event *rendering convention* belongs in `docs/messaging-spec.md` (zkm core,
+    separate item) so telegram/signal/threema inherit one shape — THIS item is the whatsapp
+    *ingest* only.
+  - **Tests**: `tests/test_call_log.py` — `test_connected_call_rendered`,
+    `test_missed_call_rendered`, `test_call_manifest_entry_message_type` (RED) +
+    `test_no_call_log_table_is_harmless` (green regression guard) — all `# roadmap:5e19`.
+    Synthetic `call_log` schema is defined in the test (the W11a number-change precedent);
+    the implementer confirms/maps the REAL columns against a decrypted msgstore.db and
+    documents the mapping in ARCHITECTURE.md (`call_result`/`video_call`/`duration` semantics).
+  - **Done-check**: `uv run pytest tests/test_call_log.py`
+  - **Context**: `convert.py:_query_messages` (add a probed `call_log` read merged into the
+    per-day stream), `_render_file`, `_reconstitute`. Mirror the
+    `message_system_number_change` (id:w11) integration shape end-to-end.
