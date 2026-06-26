@@ -1,6 +1,24 @@
 # zkm-whatsapp
 
-zkm plugin: convert decrypted WhatsApp `msgstore.db` to per-chat-day transcript markdown.
+A converter plugin for [**zkm** — ze knowledge manager](https://github.com/zommuter/zkm):
+turns a decrypted WhatsApp `msgstore.db` (SQLite) into per-chat-day transcript markdown
+in your zkm store.
+
+## Installation
+
+This is a zkm plugin — install [zkm](https://github.com/zommuter/zkm) first, then add this
+plugin by either path:
+
+```bash
+# Released wheel (end-user): resolved into zkm's sealed env
+uv tool install zkm --with zkm-whatsapp
+
+# Dev / local: clone + register against a source checkout of zkm
+git clone https://github.com/zommuter/zkm-whatsapp.git
+zkm plugin add ./zkm-whatsapp
+```
+
+Verify it is discovered: `zkm plugin list` should show `whatsapp`.
 
 ## Prerequisites
 
@@ -70,7 +88,17 @@ carrying `media.sha256`) and a no-op without `media_root`.
 
 ## Automated ingestion (optional)
 
-To decrypt + convert automatically whenever a synced backup folder changes, see
-`scripts/systemd/README.md` — a `systemd --user` `.path` unit watches the backup folder
-and runs an idempotent, `flock`'d decrypt → `zkm convert whatsapp` wrapper (key resolved
-from the OS keyring via `--key-source keyring:<service>:<account>`).
+The transcripts can stay current with zero manual steps. The setup I run:
+
+1. **[Syncthing](https://syncthing.net/)** mirrors the phone's WhatsApp backup folder
+   (the daily `msgstore-YYYY-MM-DD.N.db.crypt15` snapshots) to a folder on the host —
+   no cloud, no cables.
+2. A **`systemd --user` `.path` unit** watches that folder and, on change, fires a
+   `oneshot` service running an idempotent, `flock`'d wrapper: decrypt the newest snapshot
+   → atomic-rename into the configured `source_db` → `zkm convert whatsapp`.
+3. The backup **key lives in the OS keyring** (libsecret), never on disk — the wrapper
+   resolves it via `--key-source keyring:<service>:<account>`.
+
+The wrapper's newer-than guard + `flock` make redundant fires cheap no-ops (a Syncthing
+sync arrives as a burst), so the watcher is safe to leave running. Full unit files,
+the wrapper, and setup steps are in [`scripts/systemd/README.md`](scripts/systemd/README.md).
