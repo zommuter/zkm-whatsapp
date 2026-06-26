@@ -231,6 +231,11 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
     path prefix from id:058c. chat_name/participants are already in frontmatter to derive from.
 
 - [ ] live-store migration + zkm-stt path lockstep [HARD — hands] <!-- id:da9f -->
+  - **Status 2026-06-26**: gate MET (id:058c + id:8040 both shipped) and tooling landed —
+    `scripts/migrate_by_id.sh` (commit 8cadb6e): dry-run-by-default, idempotent flat→by-id
+    `git mv` + trigger pause/resume + `zkm convert whatsapp` regen of the by-name view. Still
+    `[HARD — hands]`: needs the live `~/knowledge` `--apply` run AND the zkm-stt by-id path
+    change in lockstep (do stt FIRST so voice notes don't silently skip/double-transcribe).
   - **Seam of** id:3b8a. **Gated on** id:058c + id:8040 shipping. **Hands** (touches the
     user's `~/knowledge` store + cross-repo coordination — not CI-runnable).
   - **Acceptance**: one-time `git mv chat/whatsapp/<tid>/ → chat/whatsapp/by-id/<tid>/` across
