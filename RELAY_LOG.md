@@ -158,3 +158,7 @@ Final suite: 68 passed, 1 skipped (pre-existing WAL env skip). Friction: stale r
 ## 2026-06-25 17:36 — reviewer (claude-opus-4-8)
 
 review (zkm-whatsapp): executor work on id:058c/8040/5e19 VERIFIED green + gaming-clean (path-only test edits, no special-casing, 68 pass/1 skip). Closed all 3 [ROUTINE]. da9f [HARD-hands] remains. routine_open=0.
+
+## 2026-06-26 09:50 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: gaming/lint/conformance clean, 68 pass; a006 count 2→3, da9f gate-met+tooling noted
