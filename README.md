@@ -39,7 +39,21 @@ downstream transcription/amenders have nothing to consume).
 zkm convert whatsapp
 ```
 
-Produces `chat/whatsapp/<thread_id>/YYYY-MM-DD.md` files — one per chat per day.
+Produces one transcript file per chat per day, plus voice/video **call-log** entries
+inline in the same per-day transcript.
+
+### Output layout
+
+```
+chat/whatsapp/
+├── by-id/<thread_id>/YYYY-MM-DD.md      # canonical — opaque, stable thread_id
+│   └── originals/_objects/…             # media stored in CAS
+└── by-name/<label>/ → ../../by-id/<thread_id>/   # regenerable human-readable view
+```
+
+- **`by-id/`** is canonical: `thread_id = sha256(chat_jid)[:16]`, stable across runs.
+- **`by-name/`** is a convenience symlink view keyed by display name, rebuilt on every
+  convert run. It is regenerable — safe to delete, gitignored.
 
 To backfill media into day-files that were ingested **before** `media_root` was set
 (they carry bare `[media: <mime>]` placeholders), run:
