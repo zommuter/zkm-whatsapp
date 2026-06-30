@@ -188,6 +188,39 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Acceptance**: flagging only (never auto-merge identities — see core
     "name is not a UID" policy); proposal doc before implementation.
 
+- [ ] W: move day-file `messages:` manifest from frontmatter → end-of-file footer [ROUTINE] <!-- id:767e -->
+  - **Mini-handoff** (review reverse-handoff, D6): promoted from `TODO.md` id:767e on
+    2026-06-30 — design DECIDED by owner in
+    `~/src/zkm/docs/meeting-notes/2026-06-26-1746-day-file-frontmatter-footer-manifest.md`
+    (D1–D6). Single-id-two-views: this is the zkm-whatsapp execution slice of that note;
+    telegram (id:ac55) + core-docs (id:2b0b/68fc/03ae) seams stay in the central ledger.
+  - **Why ROUTINE**: approach is decided (footer block, NOT a sidecar), single-file,
+    in-plugin code change; the byte-identical-re-emit + reconstitution invariants are
+    already test-pinned (w6f), so the spec is mechanically checkable.
+  - **Acceptance**: in `convert.py:_render_file`, the unbounded per-message `messages:`
+    manifest leaves the frontmatter and is written as an end-of-file
+    `<!-- zkm:manifest\n<yaml>\n-->` footer block (deterministic key order, invisible when
+    rendered). The frontmatter keeps only the light fields (`source/date/tags/thread_id/
+    chat_jid/chat_name?/processor/processor_version`) + `participants:` inline,
+    flow-compacted → a short-chat day-file frontmatter is **≤10 lines**. The manifest field
+    SET is unchanged (w6f `text`/`quoted_key_id`/`media` stay — out of scope to alter).
+    `_load_existing_manifest` (`:411-440`) + `_reconstitute` (`:1006-1080`) read the footer,
+    with a **frontmatter fallback** so a pre-change day-file (manifest still in frontmatter)
+    loads losslessly and heals to a footer on its next rewrite — zero message loss.
+    `assert_reemit_identical` stays green; determinism preserved (identical re-run returns
+    `[]`).
+  - **Tests**: `tests/test_footer_manifest.py` — `test_manifest_lives_in_footer_not_frontmatter`,
+    `test_short_chat_frontmatter_at_most_10_lines`, `test_footer_manifest_survives_rewrite_losslessly`,
+    `test_pre_change_frontmatter_manifest_heals_on_rewrite` (all `# roadmap:767e`, all 4
+    currently RED, verified red 2026-06-30). The existing `tests/test_rewrite_persistence.py`
+    `_frontmatter()` helpers will need their read-locus moved to the footer once the manifest
+    relocates — update them path-only (assertions intact), not by deletion.
+  - **Done-check**: `uv run pytest tests/test_footer_manifest.py tests/test_rewrite_persistence.py`
+  - **Context**: `convert.py:_render_file` (`:442-562`, manifest construction + the `fm`
+    dict at `:503-514` that currently inlines `"messages": manifest`), `_load_existing_manifest`
+    (`:411-440`), `_reconstitute` (`:1006-1080`). Mirror nothing cross-plugin here — the
+    telegram migration is a separate central-ledger item (id:ac55).
+
 - [x] by-id canonical: move the chat store path under `by-id/` [ROUTINE] <!-- id:058c -->
   - **Done** 2026-06-25 (f458cea), verified review: gaming-clean, 5 existing test files updated path-only (assertions intact), `_thread_rel()`/`_thread_dir()` single derivation point; full suite 68 green.
   - **Seam of** id:3b8a (meeting 2026-06-25 human-readable-chat-folder-names; umbrella in
