@@ -107,7 +107,7 @@ messages from the main DB and backups collapse on `key_id` automatically.
 **Automatic multi-source iteration** is deferred. Trigger: a concrete need to recover messages
 absent from the current `msgstore.db` (e.g. after a phone wipe / re-install gap).
 
-## Relay contract <!-- relay-executor contract v5 -->
+## Relay contract <!-- relay-executor contract v6 -->
 
 This repo is managed by a reviewer/executor relay. Load `/relay executor` before
 working on any item, then follow its rules exactly.
