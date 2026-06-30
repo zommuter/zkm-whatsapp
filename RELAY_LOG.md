@@ -166,3 +166,19 @@ review: gaming/lint/conformance clean, 68 pass; a006 count 2→3, da9f gate-met+
 ## 2026-06-29 10:53 — reviewer (claude-opus-4-8)
 
 review: clean (2 README-only commits; pointer v4->v5; routine_open=0)
+
+## 2026-06-30 11:59 — reviewer (claude-opus-4-8)
+
+review (zkm-whatsapp): audited the 1 docs-only commit (05f464f, TODO.md Option-B
+promotion to a real ledger). gaming-scan/roadmap-lint clean; no code or test changes,
+so nothing to verify-green or reopen. relay-doctor: clean except 1 todo-conformance
+orphan (the cross-cutting "Call-log ingest" context bullet) — annotated `lint-ok`
+(deliberate context-only note under the "tracked centrally" heading; ingest already
+shipped as ROADMAP id:5e19). Reverse-handoff (§5b) on the items moved in by the
+promotion: id:367f/id:bf12 already mirror ROADMAP [HARD — meeting] entries; id:3b8a
+(umbrella) / id:c0a4 (stray-REVIEW.md investigation) stay design-judgment TODOs;
+id:8d67 (--full-resweep) left as a gated follow-on. **Mini-handoff: promoted id:767e**
+(frontmatter→footer manifest, owner-DECIDED in mtg 2026-06-26-1746) to ROADMAP as
+[ROUTINE] reusing its TODO token, with acceptance/done-check and a new RED spec
+`tests/test_footer_manifest.py` (4 tests, verified red against the current
+frontmatter-manifest code). a006 summary count 3→4. routine_open=1 (id:767e).
