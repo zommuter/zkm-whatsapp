@@ -190,3 +190,7 @@ review: audited TODO Option-B promotion (clean); mini-handoff id:767e footer-man
 ## 2026-06-30 — executor (sonnet)
 
 Worked id:767e — moved per-message `messages:` manifest from frontmatter to end-of-file `<!-- zkm:manifest\n<yaml>\n-->` footer block. Changes: (1) `_FlowList` + `_yaml_dumper()` helper for flow-compacted participants (frontmatter ≤10 lines); (2) `_render_file` writes footer instead of inlining manifest in fm; (3) `_load_existing_manifest` reads footer first, frontmatter fallback for pre-767e files; (4) `_heal_day_file` reads/writes manifest via footer (with frontmatter fallback for legacy); (5) six test files updated path-only to read from footer. All 4 `test_footer_manifest.py` tests now green; full suite 72 passed, 1 skipped, 0 failed. Friction: none.
+
+## 2026-06-30 12:37 — executor (sonnet, relay-loop)
+
+feat(convert): move messages manifest to end-of-file footer (id:767e) — all 4 spec tests green, full suite 72 passed [id:767e]
