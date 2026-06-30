@@ -71,6 +71,18 @@ def _frontmatter(path: Path) -> dict:
     return yaml.safe_load(text[4:end])
 
 
+def _footer_manifest(path: Path) -> list[dict]:
+    """Parse the end-of-file ``<!-- zkm:manifest ... -->`` block (id:767e)."""
+    text = path.read_text(encoding="utf-8")
+    start = text.find("<!-- zkm:manifest")
+    assert start != -1, "no <!-- zkm:manifest ... --> footer block found"
+    body_start = text.index("\n", start) + 1
+    end = text.find("-->", body_start)
+    assert end != -1, "footer manifest block not terminated"
+    data = yaml.safe_load(text[body_start:end]) or {}
+    return data.get("messages", []) if isinstance(data, dict) else []
+
+
 def test_number_change_rendered_in_body(tmp_path: Path):  # roadmap:w11
     _db, store, config = _setup(tmp_path)
     convert(store, config)
@@ -82,8 +94,8 @@ def test_number_change_rendered_in_body(tmp_path: Path):  # roadmap:w11
 def test_number_change_manifest_entry(tmp_path: Path):  # roadmap:w11 roadmap:w11x
     _db, store, config = _setup(tmp_path)
     convert(store, config)
-    fm = _frontmatter(_day_file(store))
-    entry = next(m for m in fm["messages"] if m["key_id"] == NC_KEY_ID)
+    manifest = _footer_manifest(_day_file(store))  # manifest now lives in footer (id:767e)
+    entry = next(m for m in manifest if m["key_id"] == NC_KEY_ID)
     # message_type: system is the messaging-namespaced marker (roadmap:cfd1).
     assert entry["message_type"] == "system"
     # status: must not be "system" — it is core-owned (iCal lifecycle enum).

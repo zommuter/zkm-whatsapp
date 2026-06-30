@@ -52,6 +52,23 @@ PLUGIN_VERSION = "0.7.0"
 _DELETED_SENTINEL = "«deleted»"  # «deleted»
 _REPLY_INDICATOR = "↩"  # ↩
 
+
+# ── YAML helpers ─────────────────────────────────────────────────────────────────
+
+class _FlowList(list):
+    """A list subclass rendered in YAML flow (inline) style — for participants."""
+
+
+def _yaml_dumper() -> type:
+    """Return a SafeDumper subclass that renders _FlowList in flow style."""
+    class Dumper(yaml.SafeDumper):
+        pass
+    Dumper.add_representer(
+        _FlowList,
+        lambda d, v: d.represent_sequence("tag:yaml.org,2002:seq", v, flow_style=True),
+    )
+    return Dumper
+
 ProgressCallback = Callable[[int, int | None, str], None]
 
 
@@ -412,16 +429,41 @@ def _load_existing_manifest(path: Path) -> dict[str, dict]:
     """Return {dedup_key: manifest_entry} from an existing day file, or {} if missing.
 
     Dedup key = ``key_id`` for messages, ``call_id`` for call entries (id:5e19).
+
+    Reads the end-of-file ``<!-- zkm:manifest ... -->`` footer first (id:767e).
+    Falls back to the frontmatter ``messages:`` block for pre-767e files so they
+    load losslessly and heal to a footer on the next rewrite.
     """
     if not path.exists():
         return {}
     text = path.read_text(encoding="utf-8")
+
+    # --- Footer path (id:767e): check for <!-- zkm:manifest ... --> block ---
+    footer_start = text.find("<!-- zkm:manifest")
+    if footer_start != -1:
+        body_start = text.index("\n", footer_start) + 1
+        footer_end = text.find("-->", body_start)
+        if footer_end != -1:
+            footer_data = yaml.safe_load(text[body_start:footer_end]) or {}
+            entries = (
+                footer_data.get("messages", [])
+                if isinstance(footer_data, dict)
+                else []
+            )
+            result = {}
+            for entry in entries:
+                k = _manifest_dedup_key(entry)
+                if k:
+                    result[k] = entry
+            return result
+
+    # --- Frontmatter fallback (pre-767e files) ---
     if not text.startswith("---"):
         return {}
-    end = text.find("\n---\n", 4)
-    if end == -1:
+    fm_end = text.find("\n---\n", 4)
+    if fm_end == -1:
         return {}
-    fm = yaml.safe_load(text[4:end]) or {}
+    fm = yaml.safe_load(text[4:fm_end]) or {}
     result = {}
     for entry in fm.get("messages", []):
         k = _manifest_dedup_key(entry)
@@ -500,14 +542,15 @@ def _render_file(
                     entry["quoted_key_id"] = m["quoted_key_id"]
         manifest.append(entry)
 
+    # Frontmatter: light fields only — manifest moves to end-of-file footer (id:767e).
+    # participants: in flow (inline) style so the frontmatter stays ≤10 lines.
     fm: dict = {
         "source": PLUGIN_NAME,
         "date": day_str,
         "tags": [],
         "thread_id": thread_id,
         "chat_jid": chat_jid,
-        "participants": participants,
-        "messages": manifest,
+        "participants": _FlowList(participants),
         "processor": PLUGIN_NAME,
         "processor_version": PLUGIN_VERSION,
     }
@@ -557,9 +600,18 @@ def _render_file(
                 prefix = f"{_REPLY_INDICATOR} (re: {m['quoted_key_id']}) "
             lines.append(f"[{time_str}] {sender}: {prefix}{body} <!-- key_id: {m['key_id']} -->")
 
-    yaml_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    yaml_str = yaml.dump(
+        fm,
+        Dumper=_yaml_dumper(),
+        allow_unicode=True,
+        sort_keys=False,
+        width=float("inf"),  # never wrap flow-style participants line
+    )
+    # End-of-file footer: unbounded per-message manifest, invisible when rendered (id:767e).
+    footer_yaml = yaml.dump({"messages": manifest}, allow_unicode=True, sort_keys=False)
+    footer = f"<!-- zkm:manifest\n{footer_yaml}-->"
     body_str = "\n".join(lines)
-    return f"---\n{yaml_str}---\n\n{body_str}\n"
+    return f"---\n{yaml_str}---\n\n{body_str}\n\n{footer}\n"
 
 
 # ── WAL-safe source resolution ────────────────────────────────────────────────────
@@ -891,8 +943,19 @@ def _heal_day_file(
     if not chat_jid or not tid:
         return False
 
+    # Read manifest entries: footer for post-767e files; frontmatter fallback for legacy (id:767e).
+    footer_idx = body_after.find("<!-- zkm:manifest")
+    has_footer = footer_idx != -1
+    if has_footer:
+        _fb_start = body_after.index("\n", footer_idx) + 1
+        _fb_end = body_after.find("-->", _fb_start)
+        footer_data = yaml.safe_load(body_after[_fb_start:_fb_end]) or {}
+        entries = footer_data.get("messages", []) if isinstance(footer_data, dict) else []
+    else:
+        entries = fm.get("messages", [])
+
     changed = False
-    for entry in fm.get("messages", []):
+    for entry in entries:
         kid = entry.get("key_id")
         meta = meta_map.get(kid) if kid else None
         if meta is None:
@@ -938,8 +1001,21 @@ def _heal_day_file(
 
     if not changed:
         return False
-    yaml_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    write_atomic(md, f"---\n{yaml_str}---\n{body_after}")
+
+    if has_footer:
+        # Update footer block (body_after may have been patched by _patch_media_body_line).
+        footer_idx = body_after.find("<!-- zkm:manifest")  # re-locate after any patching
+        new_footer_yaml = yaml.dump({"messages": entries}, allow_unicode=True, sort_keys=False)
+        write_atomic(
+            md,
+            f"---\n{text[4:end + 1]}---\n{body_after[:footer_idx]}"
+            f"<!-- zkm:manifest\n{new_footer_yaml}-->\n",
+        )
+    else:
+        # Legacy file: write manifest back into frontmatter.
+        fm["messages"] = entries
+        yaml_str = yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        write_atomic(md, f"---\n{yaml_str}---\n{body_after}")
     return True
 
 

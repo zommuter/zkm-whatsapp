@@ -63,6 +63,18 @@ def _frontmatter(path: Path) -> dict:
     return yaml.safe_load(text[4:end])
 
 
+def _footer_manifest(path: Path) -> list[dict]:
+    """Parse the end-of-file ``<!-- zkm:manifest ... -->`` block (id:767e)."""
+    text = path.read_text(encoding="utf-8")
+    start = text.find("<!-- zkm:manifest")
+    assert start != -1, "no <!-- zkm:manifest ... --> footer block found"
+    body_start = text.index("\n", start) + 1
+    end = text.find("-->", body_start)
+    assert end != -1, "footer manifest block not terminated"
+    data = yaml.safe_load(text[body_start:end]) or {}
+    return data.get("messages", []) if isinstance(data, dict) else []
+
+
 def _rewrite(tmp_path: Path) -> Path:
     """Convert, add a late same-day message, convert again; return the day file."""
     db, store, config = _private_setup(tmp_path)
@@ -96,8 +108,8 @@ def test_rewrite_preserves_media_line(tmp_path: Path):  # roadmap:w6f
 def test_manifest_media_entry_has_mime_and_sha256(tmp_path: Path):  # roadmap:w6f
     _db, store, config = _private_setup(tmp_path)
     convert(store, config)
-    fm = _frontmatter(_day_file(store))
-    entry = next(m for m in fm["messages"] if m["key_id"] == MEDIA_KEY_ID)
+    manifest = _footer_manifest(_day_file(store))  # manifest now lives in footer (id:767e)
+    entry = next(m for m in manifest if m["key_id"] == MEDIA_KEY_ID)
     assert entry["media"]["mime"] == MEDIA_MIME
     assert entry["media"]["sha256"] == hashlib.sha256(MEDIA_BYTES).hexdigest()
 
@@ -105,8 +117,8 @@ def test_manifest_media_entry_has_mime_and_sha256(tmp_path: Path):  # roadmap:w6
 def test_manifest_text_persisted_except_revoked(tmp_path: Path):  # roadmap:w6f
     _db, store, config = _private_setup(tmp_path)
     convert(store, config)
-    fm = _frontmatter(_day_file(store))
-    by_key = {m["key_id"]: m for m in fm["messages"]}
+    manifest = _footer_manifest(_day_file(store))  # manifest now lives in footer (id:767e)
+    by_key = {m["key_id"]: m for m in manifest}
     assert by_key["AABBCC001"]["text"] == "Hello there"
     assert by_key["AABBCC004"].get("quoted_key_id") == "AABBCC001"
     # Revoked messages must NOT leak text into the manifest.
@@ -145,7 +157,7 @@ def test_old_manifest_without_new_keys_still_loads(tmp_path: Path):  # roadmap:w
     )
 
     convert(store, config)  # must not raise
-    fm = _frontmatter(_day_file(store))
-    by_key = {m["key_id"]: m for m in fm["messages"]}
+    manifest = _footer_manifest(_day_file(store))  # manifest now lives in footer (id:767e)
+    by_key = {m["key_id"]: m for m in manifest}
     assert "LEGACY001" in by_key  # legacy entry survived the merge
     assert by_key["AABBCC001"]["text"] == "Hello there"  # new entries persist text

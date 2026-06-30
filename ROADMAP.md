@@ -188,7 +188,7 @@ Central-ledger mirror: items below reuse the `id:` tokens of their counterparts 
   - **Acceptance**: flagging only (never auto-merge identities — see core
     "name is not a UID" policy); proposal doc before implementation.
 
-- [ ] W: move day-file `messages:` manifest from frontmatter → end-of-file footer [ROUTINE] <!-- id:767e -->
+- [x] W: move day-file `messages:` manifest from frontmatter → end-of-file footer [ROUTINE] <!-- id:767e -->
   - **Mini-handoff** (review reverse-handoff, D6): promoted from `TODO.md` id:767e on
     2026-06-30 — design DECIDED by owner in
     `~/src/zkm/docs/meeting-notes/2026-06-26-1746-day-file-frontmatter-footer-manifest.md`
