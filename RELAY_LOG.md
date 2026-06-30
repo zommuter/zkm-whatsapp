@@ -182,3 +182,7 @@ id:8d67 (--full-resweep) left as a gated follow-on. **Mini-handoff: promoted id:
 [ROUTINE] reusing its TODO token, with acceptance/done-check and a new RED spec
 `tests/test_footer_manifest.py` (4 tests, verified red against the current
 frontmatter-manifest code). a006 summary count 3→4. routine_open=1 (id:767e).
+
+## 2026-06-30 12:15 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: audited TODO Option-B promotion (clean); mini-handoff id:767e footer-manifest [ROUTINE] + red spec; pointer v5->v6; routine_open=1 [id:767e,a006]
