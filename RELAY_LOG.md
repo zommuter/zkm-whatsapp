@@ -186,3 +186,7 @@ frontmatter-manifest code). a006 summary count 3→4. routine_open=1 (id:767e).
 ## 2026-06-30 12:15 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: audited TODO Option-B promotion (clean); mini-handoff id:767e footer-manifest [ROUTINE] + red spec; pointer v5->v6; routine_open=1 [id:767e,a006]
+
+## 2026-06-30 — executor (sonnet)
+
+Worked id:767e — moved per-message `messages:` manifest from frontmatter to end-of-file `<!-- zkm:manifest\n<yaml>\n-->` footer block. Changes: (1) `_FlowList` + `_yaml_dumper()` helper for flow-compacted participants (frontmatter ≤10 lines); (2) `_render_file` writes footer instead of inlining manifest in fm; (3) `_load_existing_manifest` reads footer first, frontmatter fallback for pre-767e files; (4) `_heal_day_file` reads/writes manifest via footer (with frontmatter fallback for legacy); (5) six test files updated path-only to read from footer. All 4 `test_footer_manifest.py` tests now green; full suite 72 passed, 1 skipped, 0 failed. Friction: none.

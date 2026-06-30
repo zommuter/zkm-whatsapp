@@ -51,6 +51,18 @@ def _all_frontmatter(store: Path) -> list[dict]:
     return result
 
 
+def _footer_manifest(path: Path) -> list[dict]:
+    """Parse the end-of-file ``<!-- zkm:manifest ... -->`` block (id:767e)."""
+    text = path.read_text(encoding="utf-8")
+    start = text.find("<!-- zkm:manifest")
+    assert start != -1, "no <!-- zkm:manifest ... --> footer block found"
+    body_start = text.index("\n", start) + 1
+    end = text.find("-->", body_start)
+    assert end != -1, "footer manifest block not terminated"
+    data = yaml.safe_load(text[body_start:end]) or {}
+    return data.get("messages", []) if isinstance(data, dict) else []
+
+
 def test_owner_jid_derived_when_config_absent(tmp_path: Path):  # roadmap:f5b7
     db = _private_db(tmp_path, attribute_owner=True)
     store = tmp_path / "knowledge"
@@ -63,7 +75,9 @@ def test_owner_jid_derived_when_config_absent(tmp_path: Path):  # roadmap:f5b7
         addresses = {p["address"] for p in fm["participants"]}
         assert OWNER_JID in addresses
         assert "owner@s.whatsapp.net" not in addresses
-        for entry in fm["messages"]:
+    # Verify no entry has the default fallback JID in the manifest (id:767e: read footer)
+    for p in (store / "chat" / "whatsapp").rglob("*.md"):
+        for entry in _footer_manifest(p):
             assert entry["sender_jid"] != "owner@s.whatsapp.net"
 
 

@@ -83,10 +83,18 @@ def _day_bodies(store: Path) -> list[str]:
 def _manifest_entries(store: Path) -> list[dict]:
     entries: list[dict] = []
     for p in (store / "chat" / "whatsapp").rglob("*.md"):
-        text = p.read_text()
-        end = text.find("\n---\n", 4)
-        fm = yaml.safe_load(text[4:end]) if end != -1 else {}
-        entries.extend(fm.get("messages", []) or [])
+        text = p.read_text(encoding="utf-8")
+        # Read from end-of-file footer (id:767e); fall back to frontmatter for legacy files.
+        footer_start = text.find("<!-- zkm:manifest")
+        if footer_start != -1:
+            body_start = text.index("\n", footer_start) + 1
+            footer_end = text.find("-->", body_start)
+            data = yaml.safe_load(text[body_start:footer_end]) if footer_end != -1 else {}
+            entries.extend((data or {}).get("messages", []) or [])
+        else:
+            end = text.find("\n---\n", 4)
+            fm = yaml.safe_load(text[4:end]) if end != -1 else {}
+            entries.extend((fm or {}).get("messages", []) or [])
     return entries
 
 

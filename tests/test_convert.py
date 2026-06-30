@@ -56,6 +56,18 @@ def test_convert_per_chat_day_layout(store: Path, config: dict):
         assert len(p.stem) == 10         # YYYY-MM-DD
 
 
+def _footer_manifest(path: Path) -> list[dict]:
+    """Parse the end-of-file ``<!-- zkm:manifest ... -->`` block (id:767e)."""
+    text = path.read_text(encoding="utf-8")
+    start = text.find("<!-- zkm:manifest")
+    assert start != -1, "no <!-- zkm:manifest ... --> footer block found"
+    body_start = text.index("\n", start) + 1
+    end = text.find("-->", body_start)
+    assert end != -1, "footer manifest block not terminated"
+    data = yaml.safe_load(text[body_start:end]) or {}
+    return data.get("messages", []) if isinstance(data, dict) else []
+
+
 def test_convert_frontmatter_fields(store: Path, config: dict):
     written = convert(store, config)
     for p in written:
@@ -70,16 +82,15 @@ def test_convert_frontmatter_fields(store: Path, config: dict):
         assert "chat_jid" in fm
         assert "date" in fm
         assert "participants" in fm
-        assert "messages" in fm
+        # manifest moved to footer (id:767e) — must NOT be in frontmatter
+        assert "messages" not in fm
+        assert "<!-- zkm:manifest" in text
 
 
 def test_convert_messages_manifest_has_key_ids(store: Path, config: dict):
     written = convert(store, config)
     for p in written:
-        text = p.read_text()
-        end = text.find("\n---\n", 4)
-        fm = yaml.safe_load(text[4:end])
-        for entry in fm["messages"]:
+        for entry in _footer_manifest(p):  # manifest now lives in footer (id:767e)
             assert "key_id" in entry
             assert "timestamp" in entry
             assert "sender_jid" in entry
@@ -97,9 +108,8 @@ def test_convert_deleted_tombstone(store: Path, config: dict):
     text = day_files[0].read_text()
 
     assert _DELETED_SENTINEL in text
-    end = text.find("\n---\n", 4)
-    fm = yaml.safe_load(text[4:end])
-    revoked = [m for m in fm["messages"] if m["status"] == "revoked"]
+    manifest = _footer_manifest(day_files[0])  # manifest now lives in footer (id:767e)
+    revoked = [m for m in manifest if m["status"] == "revoked"]
     assert len(revoked) == 1
     assert revoked[0]["key_id"] == "AABBCC003"
 

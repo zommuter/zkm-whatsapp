@@ -42,8 +42,14 @@ def _cfg(db: Path, **extra: str) -> dict:
 
 
 def _manifest(day_path: Path) -> dict:
-    fm = day_path.read_text().split("---\n", 2)[1]
-    return yaml.safe_load(fm)
+    """Return the parsed footer manifest block as a dict with a 'messages' key (id:767e)."""
+    text = day_path.read_text(encoding="utf-8")
+    start = text.find("<!-- zkm:manifest")
+    assert start != -1, "no <!-- zkm:manifest ... --> footer block found"
+    body_start = text.index("\n", start) + 1
+    end = text.find("-->", body_start)
+    assert end != -1, "footer manifest block not terminated"
+    return yaml.safe_load(text[body_start:end]) or {}
 
 
 def _day_file(store: Path) -> Path:
@@ -130,12 +136,17 @@ def test_reprocess_heals_missing_manifest_text(tmp_path: Path) -> None:
     day = _day_file(store)
 
     # Simulate a 0.2.0 file: drop text: from every manifest entry (text lives only in body).
-    raw = day.read_text()
-    _, fm_text, body = raw.split("---\n", 2)
-    fm = yaml.safe_load(fm_text)
-    for m in fm["messages"]:
+    # After id:767e the manifest lives in the footer; strip text: there.
+    raw = day.read_text(encoding="utf-8")
+    footer_start = raw.find("<!-- zkm:manifest")
+    body_start = raw.index("\n", footer_start) + 1
+    footer_end = raw.find("-->", body_start)
+    footer_data = yaml.safe_load(raw[body_start:footer_end]) or {}
+    for m in footer_data.get("messages", []):
         m.pop("text", None)
-    day.write_text("---\n" + yaml.dump(fm, allow_unicode=True, sort_keys=False) + "---\n" + body)
+    new_footer_yaml = yaml.dump(footer_data, allow_unicode=True, sort_keys=False)
+    new_footer = f"<!-- zkm:manifest\n{new_footer_yaml}-->"
+    day.write_text(raw[:footer_start] + new_footer + "\n", encoding="utf-8")
     assert all("text" not in m for m in _manifest(day)["messages"])
 
     changed = reprocess(store, _cfg(db, media_root=str(media_root)), [day])
