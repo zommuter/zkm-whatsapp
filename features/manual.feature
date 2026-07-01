@@ -29,7 +29,7 @@ Feature: WhatsApp backup ingestion end-to-end
   Scenario: Live ingest of a fresh backup
     Given a decrypted msgstore.db configured as source_db in zkm-config.yaml
     When I run "zkm convert whatsapp" twice
-    Then the first run writes chat/whatsapp/<tid>/<day>.md files and auto-commits
+    Then the first run writes chat/whatsapp/by-id/<tid>/<day>.md files and auto-commits
     And the second run writes nothing (deterministic no-op)
     And "zkm search" finds message text from the transcripts after "zkm index"
 
