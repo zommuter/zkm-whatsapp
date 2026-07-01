@@ -90,7 +90,11 @@ snapshots) works by pointing `source_db` at each decrypted snapshot oldest-first
 ## Day-file rewrite + manifest reconstitution (v1 flaw FIXED → id:w6f)
 
 When new same-day messages arrive, the whole day file is re-rendered: existing messages
-are reconstituted from the `messages:` manifest and merged with new rows. The v1
+are reconstituted from the `messages:` manifest and merged with new rows. Since id:767e
+(2026-06-30) the manifest lives in an **end-of-file `<!-- zkm:manifest … -->` footer**
+(moved out of the frontmatter to keep short-chat frontmatter ≤10 lines);
+`_load_existing_manifest` reads the footer first with a frontmatter fallback for
+pre-767e files. The v1
 manifest stored only `key_id/timestamp/sender_jid/status`, so a rewrite **blanked text
 bodies, reply prefixes and media lines** of prior messages (verified 2026-06-12 —
 broader than the original media-only observation). Fixed in the w6f turn.
