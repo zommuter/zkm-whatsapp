@@ -198,3 +198,7 @@ feat(convert): move messages manifest to end-of-file footer (id:767e) — all 4 
 ## 2026-07-01 20:38 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
 
 review: id:767e footer-manifest verified green (72 pass, gaming-scan clean); fixed 767e cross-ledger drift + a006 count; ARCHITECTURE footer note; routine_open=0 [id:767e,a006]
+
+## 2026-07-02 00:06 — reviewer (claude-fable-5, relay-loop)
+
+Fable recheck clean: id:767e footer-manifest confirmed genuine (72 green, gaming-scan clean, RED spec untouched); by-id/TODO-topology doc drift fixed; id:8d67 gated as /meeting candidate; 0 ROUTINE open (3 HARD: 2 meeting-gated + 1 hands) [id:767e,8d67]
