@@ -194,3 +194,7 @@ Worked id:767e — moved per-message `messages:` manifest from frontmatter to en
 ## 2026-06-30 12:37 — executor (sonnet, relay-loop)
 
 feat(convert): move messages manifest to end-of-file footer (id:767e) — all 4 spec tests green, full suite 72 passed [id:767e]
+
+## 2026-07-01 20:38 — reviewer (claude-opus-4-8, fable-standin, relay-loop)
+
+review: id:767e footer-manifest verified green (72 pass, gaming-scan clean); fixed 767e cross-ledger drift + a006 count; ARCHITECTURE footer note; routine_open=0 [id:767e,a006]
