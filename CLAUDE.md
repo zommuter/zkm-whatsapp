@@ -2,13 +2,15 @@
 
 zkm plugin: convert decrypted WhatsApp `msgstore.db` (SQLite) to per-chat-day transcript markdown.
 
-**Store dirs**: `chat/whatsapp/<thread_id>/`
+**Store dirs**: `chat/whatsapp/by-id/<thread_id>/` (canonical, id:058c) + regenerable
+gitignored `chat/whatsapp/by-name/<label>/<leaf>` symlink view (id:8040)
 **Fetch boundary**: ingest-only — reads a decrypted `msgstore.db` via `source_db` config.
 Decryption (crypt15 → plain SQLite) is a separate fetch-role step (see `scripts/wa_decrypt_pilot.py`).
 
 See `ARCHITECTURE.md` for design decisions with rationale and rejected alternatives.
-See `ROADMAP.md` for the executor-facing task queue; this repo's `TODO.md` is a stub
-pointing at the central ledger (`~/src/zkm/TODO.md`, `W` prefix).
+See `ROADMAP.md` for the executor-facing task queue; this repo's `TODO.md` is the
+plugin's own work ledger (Option B, 2026-06-30) — genuinely cross-cutting items stay
+in the central ledger (`~/src/zkm/TODO.md`).
 
 ## Commands
 
@@ -30,7 +32,7 @@ source_db (msgstore.db) ─┬─ jid map ─────────┐
                                               convert() → _render_file() → write_atomic()
 ```
 
-One `chat/whatsapp/<thread_id>/YYYY-MM-DD.md` per chat per day.
+One `chat/whatsapp/by-id/<thread_id>/YYYY-MM-DD.md` per chat per day.
 
 - **thread_id** = `sha256(chat_jid.encode())[:16]`
 - **message_id** (body-level) = `whatsapp:<chat_jid>:<key_id>` — protocol-level stable ID
@@ -43,7 +45,7 @@ One `chat/whatsapp/<thread_id>/YYYY-MM-DD.md` per chat per day.
 - **Deterministic emission** — sort by `(timestamp, key_id)`, fixed sentinels (`«deleted»`).
 - **Revoked messages** → `«deleted»` in body; manifest entry keeps `status: revoked` + `key_id`.
 - **Replies** → `↩ (re: <quoted_key_id>)` prefix from `message_quoted` table.
-- **Media** (W6) → `write_object()` into CAS at `chat/whatsapp/<tid>/originals/_objects/`.
+- **Media** (W6) → `write_object()` into CAS at `chat/whatsapp/by-id/<tid>/originals/_objects/`.
 - **Source state** convention documented in `docs/plugin-spec.md`; shared module deferred to 3rd consumer.
 
 ## Development setup
