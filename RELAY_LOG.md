@@ -202,3 +202,7 @@ review: id:767e footer-manifest verified green (72 pass, gaming-scan clean); fix
 ## 2026-07-02 00:06 — reviewer (claude-fable-5, relay-loop)
 
 Fable recheck clean: id:767e footer-manifest confirmed genuine (72 green, gaming-scan clean, RED spec untouched); by-id/TODO-topology doc drift fixed; id:8d67 gated as /meeting candidate; 0 ROUTINE open (3 HARD: 2 meeting-gated + 1 hands) [id:767e,8d67]
+
+## 2026-07-02 08:40 — reviewer (claude-fable-5, relay-loop)
+
+Empty-window review: HEAD==relay-ckpt-20260702-0006 (Fable, same day) — classifier 'unaudited commits' verdict SPURIOUS (dropped relay.toml # path: override, 3rd instance this run, already routed:0537/3715); suite 72 green + 1 legit env-skip, gaming-scan/roadmap-lint/relay-doctor clean, 0 ROUTINE open (3 HARD: 2 meeting-gated + 1 hands)
