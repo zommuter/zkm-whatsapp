@@ -206,3 +206,7 @@ Fable recheck clean: id:767e footer-manifest confirmed genuine (72 green, gaming
 ## 2026-07-02 08:40 — reviewer (claude-fable-5, relay-loop)
 
 Empty-window review: HEAD==relay-ckpt-20260702-0006 (Fable, same day) — classifier 'unaudited commits' verdict SPURIOUS (dropped relay.toml # path: override, 3rd instance this run, already routed:0537/3715); suite 72 green + 1 legit env-skip, gaming-scan/roadmap-lint/relay-doctor clean, 0 ROUTINE open (3 HARD: 2 meeting-gated + 1 hands)
+
+## 2026-07-02 09:10 — reviewer (claude-fable-5, relay-loop)
+
+review: light window (apex DQ lane-tag chore only) audited clean — c0a4/8d67 lane tags verified, gaming-scan clean, suite 72/1-skip green, relay-doctor 0 per-repo issues; 3 open items all HARD, routine_open=0 [id:c0a4,8d67]
